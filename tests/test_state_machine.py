@@ -17,7 +17,8 @@ from projectos.domain.enums import Actor, Event, Status
 from projectos.domain.errors import IllegalTransition
 from projectos.domain.state_machine import TRANSITIONS
 
-#: The transition table transcribed independently from spec section 7.2, as
+#: The transition table transcribed independently from spec section 7.2 (including
+#: the blocking rows made normative in 7.2.1), as
 #: (from, event, to, allowed actors). Written out by hand on purpose: deriving the
 #: expectation from `TRANSITIONS` made the test self-referential — it read the
 #: answer from the same table the implementation reads, so rewiring a destination
@@ -41,9 +42,11 @@ SPEC_TABLE: tuple[tuple[Status, Event, Status | None, frozenset[Actor]], ...] = 
         Status.ACTIVE,
         Event.ESCALATE,
         Status.ESCALATED,
-        frozenset({Actor.EXECUTOR, Actor.OWNER, Actor.KERNEL, Actor.FOUNDER}),
+        frozenset({Actor.EXECUTOR, Actor.OWNER, Actor.KERNEL}),
     ),
     (Status.ACTIVE, Event.CANCEL, Status.CANCELLED, frozenset({Actor.FOUNDER})),
+    # spec 7.2 / 7.2.1 — external blocker while ACTIVE; reason required
+    (Status.ACTIVE, Event.BLOCK, Status.BLOCKED, frozenset({Actor.OWNER, Actor.KERNEL})),
     (
         Status.EVIDENCE_SUBMITTED,
         Event.VERIFY_START,
@@ -57,7 +60,7 @@ SPEC_TABLE: tuple[tuple[Status, Event, Status | None, frozenset[Actor]], ...] = 
         Status.VERIFIED,
         Event.APPROVALS_COMPLETE,
         Status.CLOSED,
-        frozenset({Actor.OWNER, Actor.REVIEWER, Actor.FOUNDER, Actor.KERNEL}),
+        frozenset({Actor.OWNER, Actor.REVIEWER, Actor.FOUNDER}),
     ),
     (
         Status.VERIFIED,
@@ -67,6 +70,8 @@ SPEC_TABLE: tuple[tuple[Status, Event, Status | None, frozenset[Actor]], ...] = 
     ),
     (Status.REJECTED, Event.RESUME, Status.ACTIVE, frozenset({Actor.KERNEL})),
     (Status.BLOCKED, Event.UNBLOCK, Status.READY, frozenset({Actor.KERNEL})),
+    # spec 7.2 / 7.2.1 — blocker the owner cannot clear (9.1 trigger 2)
+    (Status.BLOCKED, Event.ESCALATE, Status.ESCALATED, frozenset({Actor.OWNER, Actor.KERNEL})),
     (Status.ESCALATED, Event.FOUNDER_RESOLVE_PROCEED, None, frozenset({Actor.FOUNDER})),
     (
         Status.ESCALATED,
@@ -82,28 +87,17 @@ SPEC_TABLE: tuple[tuple[Status, Event, Status | None, frozenset[Actor]], ...] = 
     ),
 )
 
-#: Rows the kernel adds beyond spec section 7.2. Listing them separately keeps the
-#: table above an honest transcription of the spec, and forces any future addition
-#: to be declared here rather than slipped in silently.
-#:
-#: Both exist because the CLI needs them and the spec's own prose implies them:
-#: section 7.1 describes BLOCKED as covering "external blocker", which can arise
-#: while an assignment is ACTIVE, and section 9.1 trigger 2 covers "blockers the
-#: owner cannot clear", which requires escalating from BLOCKED.
-KERNEL_EXTENSIONS: tuple[tuple[Status, Event, Status | None, frozenset[Actor]], ...] = (
-    (Status.ACTIVE, Event.BLOCK, Status.BLOCKED, frozenset({Actor.OWNER, Actor.KERNEL})),
-    (Status.BLOCKED, Event.ESCALATE, Status.ESCALATED, frozenset({Actor.OWNER, Actor.KERNEL})),
-)
-
-FULL_TABLE = SPEC_TABLE + KERNEL_EXTENSIONS
+FULL_TABLE = SPEC_TABLE
 LEGAL_PAIRS = {(row[0], row[1]) for row in FULL_TABLE}
 
 
-def test_implementation_table_matches_the_declared_table_exactly() -> None:
-    """No row may be added to or removed from the machine silently.
+def test_implementation_table_matches_the_specification_exactly() -> None:
+    """No production transition may exist outside the normative spec table.
 
-    Anything the kernel implements must appear either in the spec transcription or
-    in the explicitly declared extension list.
+    P1.1 carried two rows in a separate `KERNEL_EXTENSIONS` list because they were
+    implemented but unspecified. Spec section 7.2 now declares them normatively
+    (with conditions in 7.2.1), so the distinction is gone and the correspondence
+    is exact in both directions.
     """
     implemented = {(t.from_status, t.event) for t in TRANSITIONS}
 
@@ -111,18 +105,13 @@ def test_implementation_table_matches_the_declared_table_exactly() -> None:
     missing = LEGAL_PAIRS - implemented
 
     assert not extra, (
-        "transitions in code but neither in spec 7.2 nor declared as a kernel "
-        f"extension: {sorted(f'{s.value}+{e.value}' for s, e in extra)}"
+        "transitions in code but absent from spec 7.2: "
+        f"{sorted(f'{s.value}+{e.value}' for s, e in extra)}"
     )
     assert not missing, (
-        f"declared transitions absent from code: "
+        f"transitions in spec 7.2 but absent from code: "
         f"{sorted(f'{s.value}+{e.value}' for s, e in missing)}"
     )
-
-
-def test_kernel_extensions_stay_a_short_declared_list() -> None:
-    """A guard against the extension list becoming a place to hide new behaviour."""
-    assert len(KERNEL_EXTENSIONS) == 2
 
 
 @pytest.mark.parametrize(

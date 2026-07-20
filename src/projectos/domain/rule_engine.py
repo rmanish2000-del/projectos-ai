@@ -11,7 +11,7 @@ show what the criterion asked for.
 
 from __future__ import annotations
 
-from projectos.domain.enums import CriterionOutcome, RuleType
+from projectos.domain.enums import CriterionOutcome, Decision, RuleType
 from projectos.domain.evidence import (
     AcceptanceCriterion,
     CriterionResult,
@@ -80,8 +80,10 @@ def _rule_specific_check(rule: EvidenceRule, fact: RepositoryFact) -> bool:
         return int(fact.data.get("failed", 1)) == 0 and int(fact.data.get("total", 0)) > 0
 
     if rule.type is RuleType.APPROVAL_RECORDED:
-        expected = str(rule.params.get("decision", "approved"))
-        return str(fact.data.get("decision", "")) == expected
+        # The rule always means an actual approval (spec 8.2). The optional
+        # `decision` parameter is pinned to the canonical value at authoring time,
+        # so there is nothing here for a criterion author to widen.
+        return Decision.parse(fact.data.get("decision")) is Decision.APPROVED
 
     # Fail closed on anything not explicitly accounted for (INV-4).
     return rule.type in _FOUND_IS_SUFFICIENT

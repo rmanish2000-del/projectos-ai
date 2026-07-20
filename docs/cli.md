@@ -45,6 +45,43 @@ audit chain cannot be orphaned.
 The `github` adapter is not implemented in this phase and fails closed on every
 evidence query. Use `local_git` unless you are on a later phase.
 
+## `projectos validate`
+
+Check the manifest, packs, version compatibility, and assignment state. **Changes
+nothing.**
+
+```bash
+projectos validate
+```
+
+Reports every finding in one run rather than stopping at the first. Errors fail
+validation; warnings do not.
+
+| Result | Exit |
+|---|---|
+| No errors (warnings allowed) | `0` |
+| One or more errors | `2` |
+
+Checks performed: manifest schema and cross-field rules, pack schema and internal
+referential integrity, pack version constraints in both directions (§10.1.1),
+template binding, assignment ownership and routing, dependency references, INV-1
+across the registry, and a secret scan of every state file it reads.
+
+## `projectos pack validate`
+
+Check a pack directory without installing or activating it.
+
+```bash
+projectos pack validate path/to/pack
+```
+
+Validates the pack manifest schema, required fields, evidence-rule definitions
+(by binding every template exactly as `next` would), workflow and transition
+references, authority declarations, the pack version, ProjectOS compatibility
+constraints, and internal referential integrity.
+
+Exit codes as for `validate`. The command never writes, installs, or activates.
+
 ## `projectos status`
 
 Project summary, current assignment, blockers, and open founder decisions.
@@ -183,6 +220,35 @@ projectos history [--assignment A-0001] [--limit N] [--verify]
 `--verify` re-walks the SHA-256 hash chain. A broken chain returns `3` and halts
 the kernel — every other command checks the chain before writing, so tampering
 surfaces on the next operation rather than at review time.
+
+---
+
+## Pack version compatibility
+
+A pack declares two versions, and both are enforced before it can be used:
+
+```yaml
+# pack.yaml
+version: 0.1.0                       # this pack's own version
+requires_projectos: ">=0.1.0,<0.2.0" # the kernel versions it supports
+```
+
+```yaml
+# .projectos/manifest.yaml
+packs:
+  - name: software-core
+    version: ">=0.1.0 <0.2.0"        # which pack versions this project accepts
+```
+
+- Constraints are PEP 440. Whitespace between clauses is accepted; `^1.0.0` and
+  `~>1.0` are rejected rather than approximated.
+- A malformed version or unsupported constraint is a hard error.
+- Prereleases are excluded unless the constraint names one: `>=0.1.0` does not
+  accept `0.2.0rc1`, but `>=0.2.0rc1` does.
+- `requires_projectos` is optional; when absent, `validate` warns. When present
+  and unsatisfied, loading fails closed.
+- Enforcement lives on the loading path, so `next`, `status`, and every other
+  command that consumes pack data is covered — not just the validation commands.
 
 ---
 

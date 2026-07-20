@@ -43,6 +43,7 @@ from projectos.domain.classification import Classification, classify
 from projectos.domain.dependency import DependencyGraph
 from projectos.domain.enums import (
     Actor,
+    Decision,
     EscalationState,
     EscalationTrigger,
     Event,
@@ -430,7 +431,7 @@ class LifecycleService:
         self._append_event(
             "approval_recorded",
             assignment_id=str(assignment_id),
-            data={"role": role.value, "decision": "approved", "actor": actor_id},
+            data={"role": role.value, "decision": Decision.APPROVED.value, "actor": actor_id},
         )
 
         status = self.approval_status(assignment)
@@ -493,7 +494,7 @@ class LifecycleService:
             assignment_id=str(assignment_id),
             data={
                 "role": role.value,
-                "decision": "attested",
+                "decision": Decision.ATTESTED.value,
                 "actor": self._identity.current(),
             },
         )

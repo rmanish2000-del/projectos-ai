@@ -51,7 +51,7 @@ TRANSITIONS: tuple[Transition, ...] = (
         Status.ACTIVE,
         Event.ESCALATE,
         Status.ESCALATED,
-        _K({Actor.EXECUTOR, Actor.OWNER, Actor.KERNEL, Actor.FOUNDER}),
+        _K({Actor.EXECUTOR, Actor.OWNER, Actor.KERNEL}),
     ),
     Transition(Status.ACTIVE, Event.CANCEL, Status.CANCELLED, _FOUNDER, "founder only"),
     Transition(Status.ACTIVE, Event.BLOCK, Status.BLOCKED, _K({Actor.OWNER, Actor.KERNEL})),
@@ -63,7 +63,7 @@ TRANSITIONS: tuple[Transition, ...] = (
         Status.VERIFIED,
         Event.APPROVALS_COMPLETE,
         Status.CLOSED,
-        _K({Actor.OWNER, Actor.REVIEWER, Actor.FOUNDER, Actor.KERNEL}),
+        _K({Actor.OWNER, Actor.REVIEWER, Actor.FOUNDER}),
     ),
     Transition(
         Status.VERIFIED,

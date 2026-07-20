@@ -35,6 +35,7 @@ SOFTWARE_CORE_PACK: dict[str, Any] = {
     "name": DEFAULT_PACK,
     "version": "0.1.0",
     "domain": "software",
+    "requires_projectos": ">=0.1.0,<0.2.0",
     "vocabulary": {"risk_flags": ["schema_migration", "dependency_upgrade"]},
     "classification": {
         "reviewed_work_types": ["implementation", "refactor"],

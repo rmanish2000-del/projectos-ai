@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from projectos.application import validation_service
 from projectos.cli import formatting
 from projectos.domain.audit import AuditEntry
 from projectos.domain.enums import (
@@ -23,16 +24,20 @@ from projectos.domain.enums import (
 from projectos.domain.errors import (
     ExitCode,
     NotFoundError,
+    ProjectOSError,
     RuleFailure,
     ValidationError,
 )
 from projectos.domain.escalation import EscalationOption
 from projectos.domain.evidence import CompletionClaim, EvidenceRef
 from projectos.domain.ids import AssignmentId, EscalationId
+from projectos.domain.pack import Pack
 from projectos.infrastructure.container import Kernel, build_kernel
+from projectos.infrastructure.pack_loading import load_pack_from_directory
 from projectos.infrastructure.paths import Layout, discover_repo_root
 from projectos.infrastructure.scaffold import build_manifest, scaffold
 from projectos.infrastructure.system import StaticIdentityProvider
+from projectos.infrastructure.template_binding import YamlTemplateBinder
 from projectos.infrastructure.yaml_io import read_yaml
 
 
@@ -73,6 +78,87 @@ def cmd_init(args: argparse.Namespace) -> int:
     print(f"  Initialised {layout.root}")
     print("  Next: projectos status")
     return int(ExitCode.OK)
+
+
+# -- validate -----------------------------------------------------------------
+
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    """Manifest, packs, and state schema check (spec 13).
+
+    Read-only: the handler loads, delegates to the application service, and renders.
+    It applies no rules of its own.
+    """
+    kernel = _kernel(args)
+    manifest = kernel.manifests.load()
+
+    # Packs are read *without* the loader's fail-closed enforcement, so an
+    # incompatible pack becomes a reported finding alongside everything else
+    # rather than aborting the run at the first problem. The kernel's own loading
+    # path still enforces; this is a report, and a report should be complete.
+    loaded: list[tuple[Pack, str | None]] = []
+    findings: list[validation_service.Finding] = []
+    for requirement in manifest.packs:
+        directory = kernel.layout.packs_dir / requirement.name
+        try:
+            loaded.append((load_pack_from_directory(directory), requirement.version))
+        except ProjectOSError as exc:
+            findings.append(
+                validation_service.Finding(
+                    validation_service.Severity.ERROR,
+                    "pack.unreadable",
+                    exc.message,
+                    f"pack {requirement.name!r}",
+                    exc.detail or "",
+                )
+            )
+
+    report = validation_service.validate_project(
+        manifest=manifest,
+        packs=tuple(loaded),
+        assignments=kernel.assignments.list_all(),
+        binder=YamlTemplateBinder(),
+    ).merged_with(validation_service.ValidationReport(findings=tuple(findings)))
+
+    # Secret scanning runs on every state read (spec 14.1); reaching this point
+    # means every file under .projectos/ was scanned clean while being loaded.
+    report = report.merged_with(
+        validation_service.ValidationReport(checked=("secret scan of all state files",))
+    )
+    return _render_validation(report, title=f"VALIDATE  {manifest.project_id}")
+
+
+# -- pack ---------------------------------------------------------------------
+
+
+def cmd_pack(args: argparse.Namespace) -> int:
+    """`pack validate <path>` — validate a pack without installing it (spec 13)."""
+    path = Path(args.path).resolve()
+    pack = load_pack_from_directory(path)
+
+    report = validation_service.validate_pack(pack, binder=YamlTemplateBinder())
+    return _render_validation(report, title=f"PACK VALIDATE  {pack.name} v{pack.version}")
+
+
+def _render_validation(report: validation_service.ValidationReport, *, title: str) -> int:
+    """Turn a structured report into output and an exit code, at the boundary."""
+    print(formatting.heading(title))
+    for item in report.checked:
+        print(f"  checked: {item}")
+
+    if report.findings:
+        print()
+        for finding in report.findings:
+            print(finding.describe())
+
+    print()
+    if report.ok:
+        warnings = f" ({len(report.warnings)} warning(s))" if report.warnings else ""
+        print(f"  VALID{warnings}")
+        return int(ExitCode.OK)
+
+    print(f"  INVALID — {len(report.errors)} error(s), {len(report.warnings)} warning(s)")
+    return int(ExitCode.INVARIANT_ERROR)
 
 
 # -- status -------------------------------------------------------------------

@@ -68,6 +68,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--force", action="store_true", help="Overwrite an existing manifest."
     )
 
+    # -- validate --------------------------------------------------------------
+    subparsers.add_parser(
+        "validate", help="Validate manifest, packs, and state. Makes no changes."
+    )
+
+    # -- pack ------------------------------------------------------------------
+    pack = subparsers.add_parser("pack", help="Project-pack tooling.")
+    pack_subs = pack.add_subparsers(dest="pack_command", required=True)
+    pack_validate = pack_subs.add_parser(
+        "validate", help="Validate a pack directory without installing it."
+    )
+    pack_validate.add_argument("path", help="Directory containing pack.yaml.")
+
     # -- status ----------------------------------------------------------------
     status = subparsers.add_parser(
         "status", help="Project, active assignment, blockers, open escalations."
@@ -173,6 +186,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 HANDLERS = {
     "init": commands.cmd_init,
+    "validate": commands.cmd_validate,
+    "pack": commands.cmd_pack,
     "status": commands.cmd_status,
     "next": commands.cmd_next,
     "verify": commands.cmd_verify,

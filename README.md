@@ -45,6 +45,7 @@ projectos init \
   --founder-id you@example.com \
   --founder-name "Your Name"
 
+projectos validate  # confirm the repository is well formed (changes nothing)
 projectos next      # generate, classify, and activate the first assignment
 projectos status    # where things stand
 ```
@@ -62,6 +63,8 @@ projectos next                      # generate the successor
 | Command | What it does |
 |---|---|
 | `projectos init` | Scaffold `.projectos/` with a manifest and the `software-core` pack |
+| `projectos validate` | Check manifest, packs, versions, and state. Changes nothing |
+| `projectos pack validate <path>` | Check a pack directory without installing it |
 | `projectos status` | Project, current assignment, blockers, open founder decisions |
 | `projectos next` | Activate the ready assignment, resume a rejected one, or generate the successor |
 | `projectos verify` | Ingest the completion claim and evaluate every acceptance criterion |
@@ -125,6 +128,10 @@ lifecycle, evidence model, dependency graph, next-assignment engine, agent route
 founder escalation, verification engine, the CLI, JSON schemas, validation, tests,
 and these docs.
 
+Pack version compatibility is enforced: a pack declares `requires_projectos` (a
+PEP 440 constraint) and the manifest constrains the pack's own `version`. Both are
+checked on the loading path, so activation cannot bypass them.
+
 Not implemented here, by design: the GitHub adapter (`pr_merged`, `ci_passed`,
 `tests_passed` rules), which is spec phase P4. A manifest configured for the
 `github` adapter fails closed with a message naming the missing capability rather
@@ -136,7 +143,7 @@ extension, MCP server, or direct Claude/ChatGPT integration.
 ## Development
 
 ```bash
-python -m pytest      # 377 tests
+python -m pytest      # 452 tests
 python -m ruff check .
 python -m mypy
 ```

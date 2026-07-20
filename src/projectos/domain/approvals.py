@@ -60,7 +60,7 @@ def evaluate(
     approvals: tuple[ApprovalRecord, ...],
 ) -> ApprovalStatus:
     recorded = frozenset(
-        approval.role for approval in approvals if approval.decision == "approved"
+        approval.role for approval in approvals if approval.is_approval
     )
     return ApprovalStatus(required=required_roles(mode, work_type), recorded=recorded)
 

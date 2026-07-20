@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any
 
-from projectos.domain.enums import CriterionOutcome, EvidenceClass, Role, RuleType
+from projectos.domain.enums import CriterionOutcome, Decision, EvidenceClass, Role, RuleType
 from projectos.domain.errors import ValidationError
 
 #: Parameters each rule type accepts, and which of those are required.
@@ -88,6 +88,24 @@ class EvidenceRule:
                 f"Rule {self.type.value} received unknown parameters",
                 detail=f"Unknown: {', '.join(sorted(unknown))}",
             )
+        # Spec 8.2 writes this rule as `approval_recorded {role, decision: approved}`:
+        # `approved` is the literal, not a free slot. Pinning it here means a
+        # criterion cannot be authored to accept an attestation in place of an
+        # approval, whichever adapter builds the rule.
+        if (
+            self.type is RuleType.APPROVAL_RECORDED
+            and "decision" in self.params
+            and Decision.parse(self.params["decision"]) is not Decision.APPROVED
+        ):
+            raise ValidationError(
+                f"approval_recorded.decision must be "
+                f"{Decision.APPROVED.value!r}, got {self.params['decision']!r}",
+                detail=(
+                    "The rule means an actual approval. Use human_attestation for "
+                    "attested facts; review rejection is a state transition."
+                ),
+            )
+
         # Copy first so a caller holding the original dict cannot reach in later,
         # then wrap read-only so the copy itself cannot be mutated either.
         object.__setattr__(self, "params", MappingProxyType(dict(self.params)))
@@ -188,10 +206,33 @@ class VerificationReport:
 
 @dataclass(frozen=True, slots=True)
 class ApprovalRecord:
-    """A recorded human approval (spec section 8.1, `approval` evidence class)."""
+    """A recorded human approval or attestation (spec 8.1, `approval` evidence class).
+
+    `decision` is a :class:`Decision`, not a string, so an arbitrary value cannot
+    enter through any adapter — CLI, deserialisation, or a future one. The
+    constructor rejects anything else rather than coercing it.
+    """
 
     assignment_id: str
     role: Role
     actor: str
-    decision: str
+    decision: Decision
     timestamp: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.decision, Decision):
+            raise ValidationError(
+                f"Approval decision must be a canonical Decision, got {self.decision!r}",
+                detail=(
+                    "Permitted values: "
+                    f"{', '.join(sorted(member.value for member in Decision))}. "
+                    "Review rejection is a state transition (review_reject), not an "
+                    "approval record."
+                ),
+            )
+        if not self.actor.strip():
+            raise ValidationError("Approval record must name the acting identity")
+
+    @property
+    def is_approval(self) -> bool:
+        return self.decision is Decision.APPROVED

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from projectos.application.ports import AuditLog, RepositoryAdapter
 from projectos.domain import rule_engine
 from projectos.domain.assignment import CODE_EVIDENCE_CLASSES, Assignment
-from projectos.domain.enums import CriterionOutcome, RuleType
+from projectos.domain.enums import CriterionOutcome, Decision, RuleType
 from projectos.domain.errors import AdapterError, ValidationError
 from projectos.domain.evidence import (
     AcceptanceCriterion,
@@ -73,40 +73,56 @@ class VerificationEngine:
         self, assignment: Assignment, criterion: AcceptanceCriterion
     ) -> RepositoryFact:
         """Approvals live in the audit log, not in the repository tree."""
-        wanted_role = str(criterion.verify.params["role"])
-        for approval in self.audit.approvals_for(assignment.id):
-            if approval.role.value == wanted_role:
-                return RepositoryFact(
-                    kind="approval",
-                    found=True,
-                    detail=f"approval by {approval.actor} as {wanted_role} at {approval.timestamp}",
-                    data={"decision": approval.decision},
-                )
-        return RepositoryFact(
-            kind="approval",
-            found=False,
-            detail=f"no recorded '{wanted_role}' approval for {assignment.id}",
+        return self._recorded_decision_fact(
+            assignment, criterion, kind="approval", wanted=Decision.APPROVED
         )
 
     def _attestation_fact(
         self, assignment: Assignment, criterion: AcceptanceCriterion
     ) -> RepositoryFact:
-        """Attestations are approvals with an `attested` decision, so they land in
-        the same audit trail with the attesting identity attached (spec 8.2, R-8)."""
-        wanted_role = str(criterion.verify.params["role"])
-        for approval in self.audit.approvals_for(assignment.id):
-            if approval.role.value == wanted_role and approval.decision == "attested":
-                return RepositoryFact(
-                    kind="attestation",
-                    found=True,
-                    detail=f"attested by {approval.actor} as {wanted_role}",
-                    data={"decision": approval.decision},
-                )
-        return RepositoryFact(
-            kind="attestation",
-            found=False,
-            detail=f"no recorded '{wanted_role}' attestation for {assignment.id}",
+        """Attestations share the approval trail so the attesting identity is
+        recorded alongside the claim (spec 8.2, risk R-8)."""
+        return self._recorded_decision_fact(
+            assignment, criterion, kind="attestation", wanted=Decision.ATTESTED
         )
+
+    def _recorded_decision_fact(
+        self,
+        assignment: Assignment,
+        criterion: AcceptanceCriterion,
+        *,
+        kind: str,
+        wanted: Decision,
+    ) -> RepositoryFact:
+        """Find a record for this role carrying the decision the rule needs.
+
+        Both role *and* decision are matched while scanning. Matching on role alone
+        and reporting whatever decision the first record happened to carry produced
+        a false negative: an attestation recorded before an approval would mask the
+        approval that followed it.
+        """
+        wanted_role = str(criterion.verify.params["role"])
+        seen: list[str] = []
+
+        for record in self.audit.approvals_for(assignment.id):
+            if record.role.value != wanted_role:
+                continue
+            if record.decision is wanted:
+                return RepositoryFact(
+                    kind=kind,
+                    found=True,
+                    detail=(
+                        f"{wanted.value} by {record.actor} as {wanted_role} "
+                        f"at {record.timestamp}"
+                    ),
+                    data={"decision": record.decision.value},
+                )
+            seen.append(record.decision.value)
+
+        detail = f"no recorded '{wanted_role}' {kind} for {assignment.id}"
+        if seen:
+            detail += f" (found instead: {', '.join(sorted(set(seen)))})"
+        return RepositoryFact(kind=kind, found=False, detail=detail)
 
 
 def reject_code_evidence_on_document_work(

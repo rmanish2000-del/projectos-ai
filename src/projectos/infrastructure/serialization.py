@@ -311,6 +311,7 @@ def pack_from_dict(
         name=raw["name"],
         version=raw["version"],
         domain=raw.get("domain", "generic"),
+        requires_projectos=raw.get("requires_projectos"),
         risk_flag_vocabulary=frozenset(raw.get("vocabulary", {}).get("risk_flags", [])),
         reviewed_work_types=frozenset(classification.get("reviewed_work_types", [])),
         protected_paths=frozenset(classification.get("protected_paths", [])),

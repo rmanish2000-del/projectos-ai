@@ -220,16 +220,18 @@ criteria asked for.
 
 ## Testing strategy
 
-377 tests, organised by the guarantee each defends:
+452 tests, organised by the guarantee each defends:
 
 | File | Focus |
 |---|---|
-| `test_regressions_p1_1.py` | One test per audit defect; each verified to fail against the pre-fix code |
+| `test_regressions_p1_1.py` | One test per P1.1 audit defect; each verified to fail against the pre-fix code |
+| `test_regressions_p1_2.py` | P1.2 contract completion; tests labelled `@REGRESSION` / `@CONTROL` by measured pre-fix outcome |
 | `test_state_machine.py` | Transition coverage against a hand-written spec table, including every illegal combination |
 | `test_audit.py` | Hash chain against realistic tampering — edit, delete, reorder, forge |
 | `test_verification.py` | Fail-closed behaviour and the fabricated-claim guarantee |
 | `test_lifecycle.py` | Invariants and the v0.1 acceptance criteria end to end |
 | `test_schemas.py` | Schema gates, round-trips, and secret scanning |
+| `validation_service` coverage | Reusable validation shared by `validate`, `pack validate`, and pack loading |
 | `test_local_git_adapter.py` | Facts from committed history; honest capabilities |
 | `test_cli.py` | The exit-code contract |
 

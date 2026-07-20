@@ -314,6 +314,7 @@ state:                         # KERNEL-MANAGED — never hand-edited
 | ACTIVE | `submit` (claim ingested) | EVIDENCE_SUBMITTED | executor via adapter |
 | ACTIVE | `escalate` | ESCALATED | executor/owner/kernel |
 | ACTIVE | `cancel` | CANCELLED | founder only |
+| ACTIVE | `block` (external blocker; reason required) | BLOCKED | owner/kernel |
 | EVIDENCE_SUBMITTED | `verify_start` | VERIFYING | kernel (automatic) |
 | VERIFYING | `all_criteria_pass` | VERIFIED | kernel only |
 | VERIFYING | `any_criterion_fail` / `verifier_error` | REJECTED | kernel only (fail closed) |
@@ -321,11 +322,35 @@ state:                         # KERNEL-MANAGED — never hand-edited
 | VERIFIED | `review_reject` | REJECTED | reviewer/founder |
 | REJECTED | `resume` | ACTIVE | kernel (with rejection reasons attached to briefing) |
 | BLOCKED | `unblock` (deps restored) | READY | kernel |
+| BLOCKED | `escalate` (blocker the owner cannot clear, §9.1 trigger 2) | ESCALATED | owner/kernel |
 | ESCALATED | `founder_resolve(proceed)` | prior state | founder |
 | ESCALATED | `founder_resolve(cancel)` | CANCELLED | founder |
 | ESCALATED | `founder_resolve(rescope)` | CANCELLED + new DRAFT issued | founder |
 
 Every transition writes an audit entry: `{event, from, to, actor, timestamp, assignment_id, evidence_refs?, reason?, prev_hash, hash}`.
+
+#### 7.2.1 Normative conditions for the blocking transitions
+
+The two blocking rows above are normative and carry conditions the table cannot
+express. They exist because a blocker does not respect state boundaries: an
+external dependency can fail while an assignment is already `ACTIVE`, and a
+blocker the owner cannot clear is an escalation trigger in its own right
+(§9.1 trigger 2). Both are deliberately narrow.
+
+| Rule | `ACTIVE → block → BLOCKED` | `BLOCKED → escalate → ESCALATED` |
+|---|---|---|
+| **Source state** | `ACTIVE` only. Not `EVIDENCE_SUBMITTED` or `VERIFYING`: once evidence is submitted the kernel must reach a verdict, not park the assignment. | `BLOCKED` only. |
+| **Target state** | `BLOCKED` | `ESCALATED` |
+| **Authorized actors** | `owner`, `kernel`. Not `executor`: an agent may not park its own assignment to avoid a verdict. | `owner`, `kernel`. |
+| **Required conditions** | A non-empty `reason` MUST be recorded. The kernel rejects a blocking request without one. | A decision-ready escalation record (§9.2) MUST exist or be created in the same operation, including ≥2 options with consequences. |
+| **Evidence / approval** | None. Blocking records no evidence and confers no progress. | None beyond the escalation record. |
+| **Effect on INV-1** | Releases the active slot: `BLOCKED` is not an active-slot state, so another assignment may then start. | No change; `ESCALATED` is not an active-slot state. |
+| **Failure behaviour** | Fails closed. A missing reason, a non-`ACTIVE` source, or an unauthorized actor raises a typed error and writes nothing. | Fails closed. Validation of the escalation precedes any persistence, so a rejected escalation leaves no record. |
+| **Return path** | `BLOCKED → unblock → READY`, permitted only once every dependency is `CLOSED`. | `ESCALATED → founder_resolve(...)`, per the rows above. |
+
+No other transition may be added to the implementation without a corresponding row
+in this table. The state-machine test suite asserts this correspondence in both
+directions and fails if the implementation and this table diverge.
 
 ### 7.3 Workflow-risk classification (deterministic)
 
@@ -464,6 +489,23 @@ pipeline:                    # ordered next-assignment templates per phase (§3.
     templates: [design-spec, implement-kernel-skeleton, ...]
 ```
 
+### 10.1.1 Version compatibility (normative)
+
+A pack declares two version facts, and both are enforced before the pack is usable:
+
+| Field | Location | Constrains | Checked against |
+|---|---|---|---|
+| `version` | `pack.yaml` | the pack's own version | the manifest's `packs[].version` constraint |
+| `requires_projectos` | `pack.yaml` | the kernel the pack supports | the executing kernel version |
+
+Rules:
+
+- Constraints are **PEP 440** (`>=0.1.0,<0.2.0`, `==0.1.0`, `*`). Whitespace between clauses is accepted and normalised to the comma form, so the `">=0.1.0 <0.2.0"` style used in §5 is valid. Syntax from other ecosystems (`^1.0.0`, `~>1.0`) is rejected, not approximated.
+- A malformed version or an unsupported constraint is a **hard error** at pack construction; it cannot sit unnoticed inside a pack.
+- **Prereleases are excluded** unless the constraint itself names a prerelease. `>=0.1.0` does not admit `0.2.0rc1`; `>=0.2.0rc1` does.
+- `requires_projectos` is **optional** in schema v1, for packs authored before it existed. When absent, the pack loads and `validate` reports a warning; when present and unsatisfied, loading fails closed.
+- Compatibility is enforced on the **loading** path, not only in the validation commands, so activation cannot bypass it.
+
 ### 10.2 Guarantees
 
 - Kernel validates packs at load; invalid pack ⇒ kernel refuses to run (fail closed).
@@ -534,6 +576,14 @@ projectos pack validate <path> | list
 ```
 
 Every command is a thin wrapper over one kernel operation; exit codes are deterministic (0 ok, 1 rule failure, 2 invariant/validation error, 3 escalation required) so the CLI is scriptable by agents.
+
+### 13.1 Implemented surface (P1 series)
+
+`init`, `validate`, `status`, `next`, `verify`, `complete`, `block`, `founder {list,escalate,resolve}`, `history`, and `pack validate`.
+
+`validate` and `pack validate` are **non-mutating** by contract: they load, evaluate, and report. Neither writes state, installs a pack, nor activates one. Both delegate to a single application-layer validation service, which is also invoked by pack loading, so a pack cannot enter the kernel through a path that skips a check the commands apply.
+
+Commands folded into the above rather than shipped separately: `start`/`resume` are driven by `next`; `submit` is folded into `verify`; `approve` is `complete`; `audit verify` is `history --verify`. `assignment new/show/classify`, `brief`, `reject`, and `pack list` are not implemented in the P1 series.
 
 ---
 

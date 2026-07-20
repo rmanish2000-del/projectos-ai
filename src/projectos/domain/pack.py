@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from projectos.domain.compatibility import parse_constraint, parse_version
 from projectos.domain.errors import ValidationError
 
 
@@ -33,6 +34,11 @@ class Pack:
     name: str
     version: str
     domain: str = "generic"
+    #: PEP 440 constraint on the kernel this pack supports. Optional in schema v1
+    #: for backward compatibility with packs authored before P1.2; when absent the
+    #: pack is loaded and `validate` reports it, since an undeclared constraint is
+    #: a gap in the pack rather than a kernel fault.
+    requires_projectos: str | None = None
     risk_flag_vocabulary: frozenset[str] = frozenset()
     reviewed_work_types: frozenset[str] = frozenset()
     protected_paths: frozenset[str] = frozenset()
@@ -46,6 +52,14 @@ class Pack:
             raise ValidationError(f"Unsupported pack schema_version {self.schema_version}")
         if not self.name.strip():
             raise ValidationError("Pack name must be non-empty")
+        # Parse eagerly so a malformed version or constraint cannot sit unnoticed
+        # in a pack until the moment something depends on it.
+        parse_version(self.version, source=f"pack {self.name!r} version")
+        if self.requires_projectos is not None:
+            parse_constraint(
+                self.requires_projectos,
+                source=f"pack {self.name!r} requires_projectos",
+            )
         declared = {phase.phase for phase in self.pipeline}
         if len(declared) != len(self.pipeline):
             raise ValidationError(f"Pack {self.name} declares a phase more than once")

@@ -13,6 +13,8 @@ authors = [{ name = "Manish", email = "rmanish2000@gmail.com" }]
 dependencies = [
     "PyYAML>=6.0",
     "jsonschema>=4.21",
+    # PEP 440 version parsing for pack compatibility checks (spec 10).
+    "packaging>=23.0",
 ]
 
 [project.optional-dependencies]

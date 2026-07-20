@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 from projectos.domain.audit import AuditEntry, verify_chain
-from projectos.domain.enums import Role
+from projectos.domain.enums import Decision, Role
 from projectos.domain.errors import ValidationError
 from projectos.domain.evidence import ApprovalRecord
 from projectos.domain.ids import AssignmentId
@@ -96,11 +96,11 @@ class NdjsonAuditLog:
             role_value = str(entry.data.get("role", ""))
             if role_value not in {role.value for role in Role}:
                 continue
-            # No default. An entry that does not state its decision grants nothing:
-            # defaulting to "approved" meant a malformed-but-chain-valid entry was
-            # read back as an approval and counted toward closure.
-            decision = entry.data.get("decision")
-            if not isinstance(decision, str) or not decision:
+            # Exact canonical match only. An entry with no decision, or with a
+            # case/whitespace variant or any non-canonical value, is ambiguous and
+            # grants nothing rather than being normalised into an approval.
+            decision = Decision.parse(entry.data.get("decision"))
+            if decision is None:
                 continue
             records.append(
                 ApprovalRecord(

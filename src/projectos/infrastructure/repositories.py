@@ -10,8 +10,7 @@ a stale snapshot.
 
 from __future__ import annotations
 
-from pathlib import Path
-
+from projectos.application.validation_service import Severity, check_pack_compatibility
 from projectos.domain.assignment import Assignment
 from projectos.domain.errors import NotFoundError, ValidationError
 from projectos.domain.escalation import Escalation
@@ -22,7 +21,8 @@ from projectos.domain.ids import (
     EscalationId,
 )
 from projectos.domain.manifest import Manifest
-from projectos.domain.pack import Pack, PackSet, PackTemplate
+from projectos.domain.pack import Pack, PackSet
+from projectos.infrastructure.pack_loading import load_pack_from_directory
 from projectos.infrastructure.paths import Layout
 from projectos.infrastructure.serialization import (
     assignment_from_dict,
@@ -31,7 +31,6 @@ from projectos.infrastructure.serialization import (
     escalation_to_dict,
     manifest_from_dict,
     manifest_to_dict,
-    pack_from_dict,
     require_mapping,
 )
 from projectos.infrastructure.yaml_io import read_yaml, write_yaml
@@ -72,10 +71,34 @@ class FilePackRepository:
         self._layout = layout
 
     def load_all(self, manifest: Manifest) -> PackSet:
+        """Load every pack the manifest requires, enforcing compatibility.
+
+        Compatibility is checked here, on the single loading path, rather than only
+        in the validation commands. `pack validate` is then a report on the same
+        rules the loader applies, and there is no route into the kernel — including
+        activation — that reaches a pack whose version was never checked.
+        """
         packs: list[Pack] = []
         for requirement in manifest.packs:
-            packs.append(self._load_one(requirement.name))
+            pack = self._load_one(requirement.name)
+            self._enforce_compatibility(pack, requirement.version)
+            packs.append(pack)
         return PackSet(tuple(packs))
+
+    @staticmethod
+    def _enforce_compatibility(pack: Pack, constraint: str | None) -> None:
+        """Fail closed on an incompatible pack (spec 10.2)."""
+        findings = check_pack_compatibility(pack, declared_constraint=constraint)
+        blocking = [f for f in findings if f.severity is Severity.ERROR]
+        if not blocking:
+            return
+        first = blocking[0]
+        raise ValidationError(
+            f"Pack {pack.name!r} is not compatible: {first.message}",
+            detail="\n".join(
+                filter(None, [first.hint, "Run `projectos validate` for the full report."])
+            ),
+        )
 
     def _load_one(self, name: str) -> Pack:
         directory = self._layout.packs_dir / name
@@ -85,19 +108,9 @@ class FilePackRepository:
                 f"Manifest requires pack {name!r} but {pack_file} is missing",
                 detail="An unresolvable pack halts the kernel (spec 10.2, fail closed).",
             )
-        raw = require_mapping(read_yaml(pack_file), source=str(pack_file))
-        return pack_from_dict(raw, self._load_templates(directory), source=str(pack_file))
-
-    @staticmethod
-    def _load_templates(directory: Path) -> tuple[PackTemplate, ...]:
-        templates_dir = directory / "templates"
-        if not templates_dir.is_dir():
-            return ()
-        templates: list[PackTemplate] = []
-        for path in sorted(templates_dir.glob("*.yaml")):
-            body = require_mapping(read_yaml(path), source=str(path))
-            templates.append(PackTemplate(name=path.stem, body=body))
-        return tuple(templates)
+        # One loader for both paths, so `pack validate` and pack loading can never
+        # disagree about how a pack is read.
+        return load_pack_from_directory(directory)
 
 
 class FileAssignmentRepository:

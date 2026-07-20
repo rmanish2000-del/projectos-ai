@@ -152,6 +152,41 @@ class Role(StrEnum):
     FOUNDER = "founder"
 
 
+class Decision(StrEnum):
+    """The only decisions a recorded human action may carry (spec 8.1, 8.2).
+
+    Closed and canonical. `approval_recorded` means an actual approval, so it pins
+    to `approved`; `human_attestation` pins to `attested`. There is deliberately no
+    `rejected` or `pending` member: review rejection is a state transition
+    (`review_reject`, spec 7.2), not an approval record, and a pending decision is
+    simply the absence of a record.
+
+    Parsing is exact-match on the canonical lowercase value. Case and whitespace
+    variants are rejected rather than normalised: silently mapping `"Approved "`
+    onto approval would mean the kernel guessing at intent on the authority path.
+    """
+
+    APPROVED = "approved"
+    ATTESTED = "attested"
+
+    @classmethod
+    def parse(cls, raw: object) -> Decision | None:
+        """Return the canonical decision, or None if the value is not one.
+
+        Returning None rather than raising lets callers reading historical records
+        skip an unrecognised entry (granting nothing) instead of halting; callers
+        on a write path use the constructor directly and get a hard failure.
+        """
+        if isinstance(raw, Decision):
+            return raw
+        if not isinstance(raw, str):
+            return None
+        for member in cls:
+            if raw == member.value:
+                return member
+        return None
+
+
 class EscalationTrigger(StrEnum):
     """Exhaustive escalation triggers (spec section 9.1)."""
 
