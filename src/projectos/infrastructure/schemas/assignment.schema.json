@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://projectos.ai/schemas/v1/assignment.schema.json",
+  "title": "ProjectOS assignment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "title",
+    "work_type",
+    "objective",
+    "owner",
+    "executor",
+    "stopping_point",
+    "acceptance_criteria"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "type": "string", "pattern": "^A-\\d{4}$" },
+    "title": { "type": "string", "minLength": 1 },
+    "work_type": {
+      "enum": [
+        "architecture", "specification", "research", "analysis", "document",
+        "implementation", "refactor", "test", "fix",
+        "approval", "deployment", "merge", "external_action"
+      ]
+    },
+    "objective": { "type": "string", "minLength": 1 },
+    "owner": { "type": "string", "minLength": 1 },
+    "executor": { "enum": ["cowork", "code", "human"] },
+    "workflow_mode": { "enum": ["fast", "reviewed", "governed"] },
+    "risk_flags": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "depends_on": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^A-\\d{4}$" },
+      "uniqueItems": true
+    },
+    "context_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path"],
+        "properties": { "path": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "stopping_point": { "type": "string", "minLength": 1 },
+    "acceptance_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/criterion" }
+    },
+    "evidence_required": {
+      "type": "array",
+      "items": { "enum": ["commit", "pr", "ci_run", "test_report", "artifact", "approval"] },
+      "uniqueItems": true
+    },
+    "next": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["template"],
+      "properties": { "template": { "type": "string", "minLength": 1 } }
+    },
+    "origin_template": { "type": ["string", "null"] },
+    "classification_rule": { "type": ["string", "null"] },
+    "rejection_reasons": { "type": "array", "items": { "type": "string" } },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "enum": [
+            "draft", "ready", "active", "evidence_submitted", "verifying",
+            "verified", "closed", "rejected", "blocked", "escalated", "cancelled"
+          ]
+        },
+        "history": { "type": "array", "items": { "$ref": "#/$defs/transition" } }
+      }
+    }
+  },
+  "$defs": {
+    "criterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "statement", "verify"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "statement": { "type": "string", "minLength": 1 },
+        "verify": { "$ref": "#/$defs/rule" }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "enum": [
+            "file_exists", "file_contains", "commit_exists", "pr_merged",
+            "ci_passed", "tests_passed", "approval_recorded", "human_attestation"
+          ]
+        },
+        "path": { "type": "string" },
+        "at_ref": { "type": "string" },
+        "pattern": { "type": "string" },
+        "message_pattern": { "type": "string" },
+        "author": { "type": "string" },
+        "since": { "type": "string" },
+        "branch": { "type": "string" },
+        "number": { "type": "integer", "minimum": 1 },
+        "approvals_required": { "type": "integer", "minimum": 1 },
+        "approver_role": { "enum": ["owner", "reviewer", "founder"] },
+        "workflow": { "type": "string" },
+        "ref": { "type": "string" },
+        "report_path": { "type": "string" },
+        "role": { "enum": ["owner", "reviewer", "founder"] },
+        "decision": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event", "from_status", "to_status", "actor", "timestamp", "audit_ref"],
+      "properties": {
+        "event": { "type": "string" },
+        "from_status": { "type": "string" },
+        "to_status": { "type": "string" },
+        "actor": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "audit_ref": { "type": "string" },
+        "reason": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

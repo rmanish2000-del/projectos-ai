@@ -1,0 +1,221 @@
+"""ProjectOS CLI (spec section 13).
+
+Each command is a thin wrapper over exactly one kernel operation. The CLI parses
+arguments, calls the kernel, formats the result, and maps typed errors onto the
+deterministic exit-code contract:
+
+    0  ok
+    1  rule failure (verification rejected)
+    2  invariant or validation error
+    3  escalation required
+
+Deterministic exit codes are what make the CLI scriptable by agents: an executor
+can branch on the code without parsing prose.
+"""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import sys
+from collections.abc import Sequence
+from pathlib import Path
+
+from projectos.cli import commands
+from projectos.domain.enums import EscalationTrigger, FounderDecision, RepositoryAdapterKind, Role
+from projectos.domain.errors import ExitCode, ProjectOSError
+
+PROGRAM = "projectos"
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=PROGRAM,
+        description="ProjectOS AI — repository-driven orchestration kernel (v0.1).",
+    )
+    parser.add_argument(
+        "--repo",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Repository root (default: discovered from the working directory).",
+    )
+    parser.add_argument(
+        "--identity",
+        default=None,
+        metavar="ID",
+        help="Acting identity for this command (default: git user.email).",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # -- init ------------------------------------------------------------------
+    init = subparsers.add_parser("init", help="Scaffold .projectos/ in this repository.")
+    init.add_argument("--project-id", required=True, help="Kebab-case, immutable project id.")
+    init.add_argument("--name", required=True, help="Human-readable project name.")
+    init.add_argument("--founder-id", required=True, help="Founder identity used for approvals.")
+    init.add_argument("--founder-name", required=True, help="Founder display name.")
+    init.add_argument("--description", default="", help="One-line project description.")
+    init.add_argument(
+        "--adapter",
+        choices=[kind.value for kind in RepositoryAdapterKind],
+        default=RepositoryAdapterKind.LOCAL_GIT.value,
+        help="Repository adapter (default: local_git).",
+    )
+    init.add_argument("--default-branch", default="main")
+    init.add_argument("--github-owner", default=None)
+    init.add_argument("--github-repo", default=None)
+    init.add_argument(
+        "--force", action="store_true", help="Overwrite an existing manifest."
+    )
+
+    # -- status ----------------------------------------------------------------
+    status = subparsers.add_parser(
+        "status", help="Project, active assignment, blockers, open escalations."
+    )
+    status.add_argument(
+        "--brief", action="store_true", help="Also print the active assignment's briefing."
+    )
+
+    # -- next ------------------------------------------------------------------
+    nxt = subparsers.add_parser(
+        "next", help="Activate the ready assignment, or generate the successor."
+    )
+    nxt.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be generated without writing state.",
+    )
+
+    # -- verify ----------------------------------------------------------------
+    verify = subparsers.add_parser(
+        "verify", help="Verify the active assignment against repository evidence."
+    )
+    verify.add_argument("assignment", nargs="?", help="Assignment id (default: the active one).")
+    verify.add_argument(
+        "--report",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help="Completion report (YAML) to ingest before verifying.",
+    )
+
+    # -- complete --------------------------------------------------------------
+    complete = subparsers.add_parser(
+        "complete", help="Record an approval; closes the assignment when all are in."
+    )
+    complete.add_argument("assignment", nargs="?", help="Assignment id (default: the active one).")
+    complete.add_argument(
+        "--role",
+        choices=[role.value for role in Role],
+        default=Role.OWNER.value,
+        help="Role approving (default: owner).",
+    )
+    complete.add_argument(
+        "--attest",
+        action="store_true",
+        help="Record a human attestation instead of an approval (spec 8.2).",
+    )
+
+    # -- block -----------------------------------------------------------------
+    block = subparsers.add_parser("block", help="Block an assignment, or unblock it.")
+    block.add_argument("assignment", nargs="?", help="Assignment id (default: the active one).")
+    block.add_argument("--reason", default="", help="Why the assignment is blocked.")
+    block.add_argument(
+        "--unblock",
+        action="store_true",
+        help="Return a BLOCKED assignment to READY once dependencies are closed.",
+    )
+
+    # -- founder ---------------------------------------------------------------
+    founder = subparsers.add_parser("founder", help="Founder escalation queue.")
+    founder_subs = founder.add_subparsers(dest="founder_command", required=True)
+
+    founder_subs.add_parser("list", help="Show open escalations.")
+
+    raise_parser = founder_subs.add_parser("escalate", help="Open a decision-ready escalation.")
+    raise_parser.add_argument("--summary", required=True, help="One-paragraph decision statement.")
+    raise_parser.add_argument(
+        "--trigger",
+        choices=[trigger.value for trigger in EscalationTrigger],
+        default=EscalationTrigger.FOUNDER_DECISION.value,
+    )
+    raise_parser.add_argument("--assignment", default=None, help="Scope to one assignment.")
+    raise_parser.add_argument(
+        "--option",
+        action="append",
+        default=[],
+        metavar="ID|DESCRIPTION|CONSEQUENCE",
+        help="Repeatable; at least two are required (spec 9.3).",
+    )
+    raise_parser.add_argument("--recommend", default=None, help="Recommended option id.")
+
+    resolve = founder_subs.add_parser("resolve", help="Founder-only resolution.")
+    resolve.add_argument("escalation", help="Escalation id, e.g. E-0001.")
+    resolve.add_argument("--decision", required=True, help="Option id or free-form directive.")
+    resolve.add_argument(
+        "--outcome",
+        choices=[outcome.value for outcome in FounderDecision],
+        default=FounderDecision.PROCEED.value,
+    )
+
+    # -- history ---------------------------------------------------------------
+    history = subparsers.add_parser("history", help="Audit log (append-only, hash-chained).")
+    history.add_argument("--assignment", default=None, help="Filter to one assignment.")
+    history.add_argument(
+        "--verify", action="store_true", help="Re-walk the hash chain and report integrity."
+    )
+    history.add_argument(
+        "--limit", type=int, default=40, help="Most recent entries to show (default: 40)."
+    )
+
+    return parser
+
+
+HANDLERS = {
+    "init": commands.cmd_init,
+    "status": commands.cmd_status,
+    "next": commands.cmd_next,
+    "verify": commands.cmd_verify,
+    "complete": commands.cmd_complete,
+    "block": commands.cmd_block,
+    "founder": commands.cmd_founder,
+    "history": commands.cmd_history,
+}
+
+
+def _force_utf8_output() -> None:
+    """Print UTF-8 regardless of the console's default codepage.
+
+    Windows consoles default to cp1252, which cannot encode the box-drawing and
+    arrow characters used in the output; without this the CLI dies with a
+    UnicodeEncodeError before it can print anything or return its exit code.
+    `errors="replace"` keeps a genuinely limited terminal readable rather than
+    fatal.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        with contextlib.suppress(ValueError, OSError):  # exotic stream types
+            reconfigure(encoding="utf-8", errors="replace")
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    _force_utf8_output()
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    handler = HANDLERS[args.command]
+    try:
+        return int(handler(args))
+    except ProjectOSError as error:
+        # Typed errors carry their own exit code; nothing else decides one.
+        print(f"error: {error.render()}", file=sys.stderr)
+        return int(error.exit_code)
+    except KeyboardInterrupt:  # pragma: no cover - interactive only
+        print("aborted", file=sys.stderr)
+        return int(ExitCode.INVARIANT_ERROR)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())
