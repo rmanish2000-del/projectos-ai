@@ -8,6 +8,7 @@ and are asserted directly:
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -21,10 +22,31 @@ def run(*argv: str) -> int:
     return main(list(argv))
 
 
+def commit_all(root: Path, message: str) -> None:
+    """Commit the working tree. Evidence must be committed to count."""
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(root), "commit", "-m", message], check=True, capture_output=True
+    )
+
+
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
     root.mkdir()
+    # A real git repository: the local-git adapter reads committed history and
+    # refuses to treat a non-repository as a source of evidence.
+    subprocess.run(["git", "-C", str(root), "init", "-b", "main"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(root), "config", "user.email", FOUNDER_ID],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(root), "config", "user.name", FOUNDER_NAME],
+        check=True,
+        capture_output=True,
+    )
     code = run(
         "--repo", str(root),
         "init",
@@ -201,10 +223,14 @@ def test_rejected_work_resumes_and_then_passes(project: Path, capsys) -> None:
     spec.parent.mkdir(parents=True, exist_ok=True)
     spec.write_text("# Specification\n", encoding="utf-8")
 
-    # `next` resumes the rejected assignment and re-briefs the executor.
+    # Uncommitted work is not evidence.
     assert run("--repo", str(project), "next") == ExitCode.OK
     assert "RESUMED AFTER REJECTION" in capsys.readouterr().out
+    assert run("--repo", str(project), "verify") == ExitCode.RULE_FAILURE
 
+    commit_all(project, "add spec")
+
+    assert run("--repo", str(project), "next") == ExitCode.OK
     assert run("--repo", str(project), "verify") == ExitCode.OK
 
 
@@ -214,6 +240,7 @@ def test_closing_an_assignment_advances_the_pipeline(project: Path, capsys) -> N
     spec = project / "docs" / "SPEC.md"
     spec.parent.mkdir(parents=True, exist_ok=True)
     spec.write_text("# Specification\n", encoding="utf-8")
+    commit_all(project, "add spec")
     run("--repo", str(project), "next")
     assert run("--repo", str(project), "verify") == ExitCode.OK
 

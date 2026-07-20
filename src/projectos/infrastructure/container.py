@@ -24,6 +24,7 @@ from projectos.infrastructure.repositories import (
     FilePackRepository,
 )
 from projectos.infrastructure.system import GitIdentityProvider, SystemClock
+from projectos.infrastructure.template_binding import YamlTemplateBinder
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +74,7 @@ def build_kernel(
         escalations=escalations,
         audit=audit,
         adapter=resolved_adapter,
+        templates=YamlTemplateBinder(),
         clock=resolved_clock,
         identity=resolved_identity,
     )

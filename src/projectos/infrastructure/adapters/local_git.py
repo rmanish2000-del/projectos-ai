@@ -49,46 +49,32 @@ class LocalGitAdapter:
     def _file_exists(self, rule: EvidenceRule) -> RepositoryFact:
         path = str(rule.params["path"])
         ref = str(rule.params.get("at_ref", self.default_branch))
+        self._require_repository()
 
         blob = self._show(f"{ref}:{path}")
         if blob is not None:
             return RepositoryFact(
                 kind="file", found=True, detail=f"{path} present at {ref}", data={"ref": ref}
             )
-
-        if not self._has_commits():
-            on_disk = (self.repo_root / path).is_file()
-            return RepositoryFact(
-                kind="file",
-                found=on_disk,
-                detail=(
-                    f"{path} {'present' if on_disk else 'absent'} in the working tree "
-                    "(repository has no commits yet)"
-                ),
-            )
-        return RepositoryFact(kind="file", found=False, detail=f"{path} not present at {ref}")
+        return RepositoryFact(
+            kind="file", found=False, detail=f"{path} not committed at {ref}"
+        )
 
     def _file_contains(self, rule: EvidenceRule) -> RepositoryFact:
         path = str(rule.params["path"])
         pattern = str(rule.params["pattern"])
         ref = str(rule.params.get("at_ref", self.default_branch))
+        self._require_repository()
 
         content = self._show(f"{ref}:{path}")
-        if content is None and not self._has_commits():
-            candidate = self.repo_root / path
-            if candidate.is_file():
-                content = candidate.read_text(encoding="utf-8", errors="replace")
         if content is None:
             return RepositoryFact(
-                kind="file", found=False, detail=f"{path} not readable at {ref}"
+                kind="file", found=False, detail=f"{path} not committed at {ref}"
             )
 
-        try:
-            matched = re.search(pattern, content, re.MULTILINE) is not None
-        except re.error as exc:
-            raise AdapterError(
-                f"Invalid regex in file_contains rule: {pattern!r}", detail=str(exc)
-            ) from exc
+        matcher = self._compile(pattern)
+        assert matcher is not None  # pattern is a required parameter
+        matched = matcher.search(content) is not None
 
         return RepositoryFact(
             kind="file_content",
@@ -100,6 +86,7 @@ class LocalGitAdapter:
 
     def _commit_exists(self, rule: EvidenceRule) -> RepositoryFact:
         branch = str(rule.params.get("branch", self.default_branch))
+        self._require_repository()
         args = ["log", "--format=%H%x1f%an%x1f%s", branch]
         if "since" in rule.params:
             args.append(f"--since={rule.params['since']}")
@@ -113,9 +100,10 @@ class LocalGitAdapter:
             )
 
         message_pattern = rule.params.get("message_pattern")
+        matcher = self._compile(message_pattern)
         for line in output.splitlines():
             sha, _author, subject = line.split("\x1f", 2)
-            if message_pattern is None or re.search(str(message_pattern), subject):
+            if matcher is None or matcher.search(subject):
                 return RepositoryFact(
                     kind="commit",
                     found=True,
@@ -129,6 +117,41 @@ class LocalGitAdapter:
         )
 
     # -- git plumbing ----------------------------------------------------------
+
+    @staticmethod
+    def _compile(pattern: object) -> re.Pattern[str] | None:
+        """Compile an authored regex, converting a bad one into a typed error.
+
+        An uncaught `re.error` would escape the adapter and abort verification
+        mid-transition; raising `AdapterError` keeps it on the fail-closed path.
+        """
+        if pattern is None:
+            return None
+        try:
+            # MULTILINE so `^`/`$` anchor to lines within a file blob; harmless on
+            # the single-line commit subjects the same helper compiles.
+            return re.compile(str(pattern), re.MULTILINE)
+        except re.error as exc:
+            raise AdapterError(
+                f"Invalid regex in acceptance criterion: {pattern!r}", detail=str(exc)
+            ) from exc
+
+    def _require_repository(self) -> None:
+        """Fail closed unless this really is a git repository.
+
+        Previously any git failure fell back to reading the working tree, so a
+        directory that was not a repository at all reported untracked files as
+        evidence. Absence of a repository is an adapter error, not an absence of
+        evidence — the two must not be conflated.
+        """
+        if self._git(["rev-parse", "--git-dir"], allow_failure=True) is None:
+            raise AdapterError(
+                f"{self.repo_root} is not a git repository",
+                detail=(
+                    "The local-git adapter reads evidence from committed history. "
+                    "Run `git init` and commit the work before verifying."
+                ),
+            )
 
     def _has_commits(self) -> bool:
         return self._git(["rev-parse", "--verify", "HEAD"], allow_failure=True) is not None

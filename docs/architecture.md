@@ -131,9 +131,22 @@ Canonicalisation is JSON with sorted keys and no insignificant whitespace, so th
 same logical entry always hashes identically.
 
 `verify_chain` re-walks the whole chain rather than only the tail — a tamperer who
-can rewrite one entry can rewrite the tail too. Every kernel operation calls the
-guard before writing, so a tampered log halts the kernel (INV-6) rather than being
-noticed later.
+can rewrite one entry can rewrite the tail too.
+
+**Chain integrity alone is not enough.** Any prefix of a valid chain is itself a
+valid chain, so truncating the tail — or deleting the newest monthly file, or the
+whole log — leaves something that verifies. The anchor comes from outside the log:
+every transition records the hash of the authorising entry in
+`TransitionRecord.audit_ref`, and `application/integrity.py` cross-checks in both
+directions:
+
+* every `audit_ref` an assignment cites must be present in the log (catches a
+  truncated or deleted log), and
+* every transition the log records must appear in the assignment's history
+  (catches history edited out of a state file).
+
+Every kernel operation runs this check before writing, so tampering halts the
+kernel (INV-6) rather than being noticed later.
 
 Files rotate monthly for filing convenience, but the chain runs continuously across
 them: starting a fresh file does not escape verification.
@@ -142,12 +155,12 @@ them: starting a fresh file does not escape verification.
 
 | Invariant | Enforced by |
 |---|---|
-| INV-1 one active assignment | `LifecycleService.start` checks the active slot |
+| INV-1 one active assignment | `_assert_active_slot_free`, called from `start`, `resume`, and founder proceed-resolution |
 | INV-2 one owner, one executor | `create` validates against the manifest; `routing.validate_routing` |
 | INV-3 no VERIFIED without evidence | `VerificationReport.passed` requires a non-empty, fully passing set |
-| INV-4 fail closed | `state_machine.lookup`, `rule_engine`, adapter error handling |
+| INV-4 fail closed | `state_machine.lookup`, `rule_engine`, adapter error handling, `verifier_error` on any unexpected exception |
 | INV-5 append-only hash chain | `audit.seal_next` / `verify_chain` |
-| INV-6 halt on broken state | `LifecycleService._guard` on every operation |
+| INV-6 halt on broken state | `LifecycleService._guard` → `integrity.verify_state` on every operation |
 | INV-7 one successor | `generate_next` returns at most one assignment |
 
 ### Active slot vs. current assignment
@@ -166,8 +179,12 @@ what makes them ergonomic without weakening INV-1.
 
 Packs are declarative YAML with no executable code. Every extension point is
 additive: a pack can raise a classification, add a governed trigger, or add an
-escalation trigger, but there is no representation for removing one. The
-classifier takes the maximum of every rule that fires rather than the last.
+escalation trigger, but there is no representation for removing one.
+
+Classification is **monotonic**: the project default is the floor, every rule is
+evaluated, and the maximum severity wins. Returning on the first rule that fired
+was a defect — a pack marking a work type REVIEWED could pull an assignment below
+a GOVERNED project default, or below a level the owner had raised it to.
 
 `template_binding.py` refuses any template that tries to set `id`, `state`, or
 `origin_template` — a pack cannot mint an identifier or pre-approve itself.
@@ -190,6 +207,11 @@ what was committed rather than what happens to be in the working tree. It declar
 `pr`, `ci`, and `artifacts` as `False`; rules needing those fail closed with a
 message naming the capability.
 
+There is no working-tree fallback. An earlier version fell back to plain filesystem
+existence whenever git could not answer, which meant a directory that was not a
+repository at all reported untracked files as evidence. Absence of a repository is
+an `AdapterError`, not an absence of evidence — conflating the two is fail-open.
+
 The GitHub adapter is spec phase P4. Rather than omit it, this phase ships
 `UnavailableGitHubAdapter`, which declares no capabilities and raises on every
 query. A manifest configured for `github` therefore fails closed with an actionable
@@ -198,11 +220,12 @@ criteria asked for.
 
 ## Testing strategy
 
-306 tests, organised by the guarantee each defends:
+377 tests, organised by the guarantee each defends:
 
 | File | Focus |
 |---|---|
-| `test_state_machine.py` | Exhaustive transition coverage, including every illegal combination |
+| `test_regressions_p1_1.py` | One test per audit defect; each verified to fail against the pre-fix code |
+| `test_state_machine.py` | Transition coverage against a hand-written spec table, including every illegal combination |
 | `test_audit.py` | Hash chain against realistic tampering — edit, delete, reorder, forge |
 | `test_verification.py` | Fail-closed behaviour and the fabricated-claim guarantee |
 | `test_lifecycle.py` | Invariants and the v0.1 acceptance criteria end to end |
@@ -213,6 +236,14 @@ criteria asked for.
 Every test builds its own repository under `tmp_path` with a pinned clock and known
 identity, so nothing depends on the machine's git config, wall clock, or test
 ordering.
+
+**Expectations come from outside the implementation.** `test_state_machine.py`
+holds the transition table transcribed by hand from spec §7.2, plus a short,
+explicitly declared `KERNEL_EXTENSIONS` list. Deriving expectations from
+`TRANSITIONS` made the test self-referential: rewiring a destination in the table
+produced zero failures, so the component the docstring calls "the frozen core" was
+the one the suite verified least. Rows the kernel adds beyond the spec must now be
+declared in `KERNEL_EXTENSIONS` to pass, so no row can be added silently.
 
 ## Traceability to v0.1 acceptance criteria
 
@@ -225,7 +256,7 @@ ordering.
 | 5 | `depends_on` gating | `test_open_dependency_prevents_ready` |
 | 6 | Deterministic successor or `NEXT_UNDETERMINED` | `test_next_generation_is_deterministic`, `test_undetermined_next_opens_a_decision_ready_escalation` |
 | 7 | Escalation options required; resolution re-drives | `test_escalation_without_options_is_rejected`, `test_escalation_freezes_the_assignment_until_resolved` |
-| 8 | Audit verify passes clean, fails after edit | `test_tampered_audit_file_halts_the_kernel` |
+| 8 | Audit verify passes clean, fails after edit | `test_tampered_audit_file_halts_the_kernel`, plus `test_tail_truncation_is_detected` and `test_history_removed_from_an_assignment_file_is_detected` for state files |
 | 9 | No CLOSE without human approval | `test_merge_work_always_requires_founder_approval` |
 | 10 | Correct briefings; code evidence rejected on document work | `test_code_evidence_on_document_work_is_rejected` |
 
@@ -240,6 +271,10 @@ GOVERNED merge path depends on the GitHub adapter (P4).
   approvals. This is spec risk R-6, consciously accepted for the single-founder
   threat model; signed approvals are a v0.2 item.
 - **State files are not auto-committed** — `commit_state` from spec §11 is not
-  wired up; commit `.projectos/` alongside your work for now.
+  wired up; commit `.projectos/` alongside your work for now. Note this means
+  §8.5's "GitHub history provides secondary tamper evidence" does not hold
+  automatically. The `audit_ref` cross-check is the primary defence.
+- **Evidence must be committed** — the local-git adapter reads committed history
+  only. Work in the working tree is not evidence, by design.
 - **Phase is fixed to `foundation`** — multi-phase pipelines are modelled in the
   pack schema but the engine reads only the one phase.

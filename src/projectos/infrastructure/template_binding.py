@@ -8,6 +8,7 @@ declarative: a pack cannot mint an identifier, set a status, or pre-approve itse
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from projectos.domain.assignment import Assignment
@@ -19,6 +20,31 @@ from projectos.infrastructure.serialization import assignment_from_dict
 
 #: Fields only the kernel may set. A template containing any of these is rejected.
 KERNEL_ISSUED_FIELDS: frozenset[str] = frozenset({"id", "state", "origin_template"})
+
+
+@dataclass(frozen=True, slots=True)
+class YamlTemplateBinder:
+    """Infrastructure implementation of the `TemplateBinder` port.
+
+    Binding needs the serialisation layer, which is why it is a port: the
+    application layer asks for a bound assignment and never learns that YAML is
+    involved.
+    """
+
+    def bind(
+        self,
+        template: PackTemplate,
+        *,
+        assignment_id: AssignmentId,
+        manifest: Manifest,
+        predecessor: Assignment | None = None,
+    ) -> Assignment:
+        return bind_template(
+            template,
+            assignment_id=assignment_id,
+            manifest=manifest,
+            predecessor=predecessor,
+        )
 
 
 def bind_template(

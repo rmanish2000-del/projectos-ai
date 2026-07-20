@@ -96,12 +96,18 @@ class NdjsonAuditLog:
             role_value = str(entry.data.get("role", ""))
             if role_value not in {role.value for role in Role}:
                 continue
+            # No default. An entry that does not state its decision grants nothing:
+            # defaulting to "approved" meant a malformed-but-chain-valid entry was
+            # read back as an approval and counted toward closure.
+            decision = entry.data.get("decision")
+            if not isinstance(decision, str) or not decision:
+                continue
             records.append(
                 ApprovalRecord(
                     assignment_id=wanted,
                     role=Role(role_value),
                     actor=str(entry.data.get("actor", entry.actor)),
-                    decision=str(entry.data.get("decision", "approved")),
+                    decision=decision,
                     timestamp=entry.timestamp,
                 )
             )

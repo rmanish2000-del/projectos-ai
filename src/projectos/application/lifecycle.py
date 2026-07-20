@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from projectos.application.integrity import IntegrityReport, verify_state
 from projectos.application.ports import (
     AssignmentRepository,
     AuditLog,
@@ -27,6 +28,7 @@ from projectos.application.ports import (
     ManifestRepository,
     PackRepository,
     RepositoryAdapter,
+    TemplateBinder,
 )
 from projectos.application.verification import (
     VerificationEngine,
@@ -52,6 +54,7 @@ from projectos.domain.errors import (
     EscalationRequired,
     InvariantViolation,
     NotFoundError,
+    RuleFailure,
     ValidationError,
 )
 from projectos.domain.escalation import Escalation, EscalationOption, Resolution
@@ -103,6 +106,7 @@ class LifecycleService:
         escalations: EscalationRepository,
         audit: AuditLog,
         adapter: RepositoryAdapter,
+        templates: TemplateBinder,
         clock: Clock,
         identity: IdentityProvider,
     ) -> None:
@@ -112,6 +116,7 @@ class LifecycleService:
         self._escalations = escalations
         self._audit = audit
         self._adapter = adapter
+        self._templates = templates
         self._clock = clock
         self._identity = identity
 
@@ -129,8 +134,33 @@ class LifecycleService:
         return DependencyGraph(self._assignments.list_all())
 
     def _guard(self) -> None:
-        """INV-6: refuse to operate on a tampered log."""
-        self._audit.verify()
+        """INV-6: refuse to operate on tampered state.
+
+        Checks the chain *and* its agreement with the assignment files, so a
+        truncated or deleted log is caught rather than passing as intact.
+        """
+        self.verify_integrity()
+
+    def verify_integrity(self) -> IntegrityReport:
+        return verify_state(self._audit.read_all(), self._assignments.list_all())
+
+    def _assert_active_slot_free(self, assignment_id: AssignmentId) -> None:
+        """INV-1, enforced on every path that can occupy the execution slot.
+
+        Previously only `start` checked this, so `resume` and a founder's
+        proceed-resolution could each produce a second active assignment.
+        """
+        occupant = self._active_occupant()
+        if occupant is None or occupant.id == assignment_id:
+            return
+        raise InvariantViolation(
+            f"Cannot activate {assignment_id}: {occupant.id} is already "
+            f"{occupant.status.value}",
+            detail=(
+                "INV-1 permits at most one active assignment. Complete, block, or "
+                f"cancel {occupant.id} first."
+            ),
+        )
 
     def _actor_role(self, declared: Actor) -> Actor:
         """Founder identity outranks a declared role: the founder may act as owner."""
@@ -285,17 +315,7 @@ class LifecycleService:
         """READY -> ACTIVE. Enforces INV-1."""
         self._guard()
         assignment = self._assignments.get(assignment_id)
-
-        occupant = self._active_occupant()
-        if occupant is not None and occupant.id != assignment_id:
-            raise InvariantViolation(
-                f"Cannot start {assignment_id}: {occupant.id} is already "
-                f"{occupant.status.value}",
-                detail=(
-                    "INV-1 permits at most one active assignment. Complete, block, or "
-                    f"cancel {occupant.id} first."
-                ),
-            )
+        self._assert_active_slot_free(assignment_id)
 
         started = self._transition(assignment, Event.START, Actor.KERNEL)
         return started, routing.brief(started)
@@ -337,7 +357,30 @@ class LifecycleService:
 
         verifying = self._transition(assignment, Event.VERIFY_START, Actor.KERNEL)
         engine = VerificationEngine(adapter=self._adapter, audit=self._audit)
-        report = engine.verify(verifying)
+
+        try:
+            report = engine.verify(verifying)
+        except Exception as exc:
+            # VERIFYING has exactly one other exit, and letting an unexpected
+            # exception escape here would strand the assignment there forever with
+            # no legal transition out. `verifier_error` is the state machine's
+            # designated fail-closed edge; emit it rather than propagating.
+            rejected = self._transition(
+                verifying,
+                Event.VERIFIER_ERROR,
+                Actor.KERNEL,
+                reason=f"verifier error ({type(exc).__name__}): {exc}",
+            )
+            reason = (
+                f"The verifier failed before reaching a verdict: {exc}. "
+                "Fix the acceptance criterion or the adapter configuration, then retry."
+            )
+            rejected = rejected.with_rejection_reasons((reason,))
+            self._assignments.save(rejected)
+            raise RuleFailure(
+                f"{assignment_id} REJECTED: the verifier errored before producing a verdict",
+                detail=reason,
+            ) from exc
 
         if report.passed:
             verified = self._transition(
@@ -375,7 +418,6 @@ class LifecycleService:
         self._guard()
         assignment = self._assignments.get(assignment_id)
         actor_id = self._identity.current()
-        manifest = self.manifest
 
         if assignment.status is not Status.VERIFIED:
             raise InvariantViolation(
@@ -383,16 +425,7 @@ class LifecycleService:
                 "accept approvals",
                 detail="Run `projectos verify` first — approval never substitutes for evidence.",
             )
-        if role is Role.FOUNDER and not manifest.is_founder(actor_id):
-            raise InvariantViolation(
-                f"{actor_id!r} is not the founder ({manifest.founder.id})",
-                detail="Founder approvals are validated against manifest.project.founder.id.",
-            )
-        if role is Role.REVIEWER and not reviewer_is_independent(actor_id, assignment.owner):
-            raise InvariantViolation(
-                f"{actor_id!r} owns {assignment_id} and cannot review it",
-                detail="A reviewer must be independent of the executor (spec 4.1).",
-            )
+        self._validate_authority(assignment, role)
 
         self._append_event(
             "approval_recorded",
@@ -412,10 +445,49 @@ class LifecycleService:
         )
         return closed, status
 
+    def _validate_authority(self, assignment: Assignment, role: Role) -> None:
+        """Check that the acting identity may speak in `role` for this assignment.
+
+        Shared by `approve` and `attest`. Attestation previously validated nothing,
+        so any identity could attest as founder and satisfy a `human_attestation`
+        criterion — the R-8 rubber-stamp risk, with the identity logged but never
+        checked. Both paths record evidence, so both go through the same gate.
+        """
+        actor_id = self._identity.current()
+        manifest = self.manifest
+
+        # Deliberately not requiring every actor to be in manifest.owners: spec 4.1
+        # allows a reviewer to be an outside human or a second agent session, so
+        # only the owner role is bound to the owner list.
+        if role is Role.FOUNDER and not manifest.is_founder(actor_id):
+            raise InvariantViolation(
+                f"{actor_id!r} is not the founder ({manifest.founder.id})",
+                detail="Founder decisions are validated against manifest.project.founder.id.",
+            )
+        if role is Role.OWNER:
+            if not manifest.is_owner(actor_id):
+                raise InvariantViolation(
+                    f"{actor_id!r} is not listed in manifest.owners",
+                    detail="An owner decision must come from an identity the project knows.",
+                )
+            if not (actor_id == assignment.owner or manifest.is_founder(actor_id)):
+                raise InvariantViolation(
+                    f"{actor_id!r} does not own {assignment.id} ({assignment.owner})",
+                    detail=(
+                        "An owner decision must come from the assignment's owner or the founder."
+                    ),
+                )
+        if role is Role.REVIEWER and not reviewer_is_independent(actor_id, assignment.owner):
+            raise InvariantViolation(
+                f"{actor_id!r} owns {assignment.id} and cannot review it",
+                detail="A reviewer must be independent of the executor (spec 4.1).",
+            )
+
     def attest(self, assignment_id: AssignmentId, role: Role) -> None:
         """Record a human attestation for facts outside the repository (spec 8.2)."""
         self._guard()
-        self._assignments.get(assignment_id)
+        assignment = self._assignments.get(assignment_id)
+        self._validate_authority(assignment, role)
         self._append_event(
             "attestation_recorded",
             assignment_id=str(assignment_id),
@@ -441,6 +513,7 @@ class LifecycleService:
         """REJECTED -> ACTIVE, carrying the rejection reasons into the new briefing."""
         self._guard()
         assignment = self._assignments.get(assignment_id)
+        self._assert_active_slot_free(assignment_id)
         resumed = self._transition(
             assignment,
             Event.RESUME,
@@ -488,6 +561,13 @@ class LifecycleService:
     ) -> Escalation:
         """Create a decision-ready escalation and freeze the assignment if scoped to one."""
         self._guard()
+
+        # Validate the freeze before writing anything. Persisting the escalation
+        # first meant an illegal transition left an orphan open escalation that
+        # blocked the project while the assignment stayed unfrozen — a failed
+        # operation must not leave a trace.
+        freeze_actor = self._plan_freeze(assignment_id)
+
         escalation = Escalation(
             id=self._escalations.next_id(),
             trigger=trigger,
@@ -505,16 +585,35 @@ class LifecycleService:
             data={"trigger": trigger.value, "summary": summary},
         )
 
-        if assignment_id is not None:
-            assignment = self._assignments.get(assignment_id)
-            if assignment.status is not Status.ESCALATED:
-                self._transition(
-                    assignment,
-                    Event.ESCALATE,
-                    Actor.OWNER if assignment.status is not Status.READY else Actor.KERNEL,
-                    reason=f"{escalation.id}: {summary}",
-                )
+        if assignment_id is not None and freeze_actor is not None:
+            self._transition(
+                self._assignments.get(assignment_id),
+                Event.ESCALATE,
+                freeze_actor,
+                reason=f"{escalation.id}: {summary}",
+            )
         return escalation
+
+    def _plan_freeze(self, assignment_id: AssignmentId | None) -> Actor | None:
+        """Resolve which actor may freeze this assignment, or raise.
+
+        Returns None when there is nothing to freeze: a project-level escalation,
+        or an assignment already in ESCALATED.
+        """
+        if assignment_id is None:
+            return None
+
+        from projectos.domain import state_machine
+
+        assignment = self._assignments.get(assignment_id)
+        if assignment.status is Status.ESCALATED:
+            return None
+
+        actor = Actor.KERNEL if assignment.status is Status.READY else Actor.OWNER
+        # Raises IllegalTransition here, before any write, if the assignment is in a
+        # status with no `escalate` edge.
+        state_machine.resolve(assignment.status, Event.ESCALATE, actor)
+        return actor
 
     def resolve(
         self, escalation_id: EscalationId, decision: str, outcome: FounderDecision
@@ -566,6 +665,13 @@ class LifecycleService:
             FounderDecision.CANCEL: Event.FOUNDER_RESOLVE_CANCEL,
             FounderDecision.RESCOPE: Event.FOUNDER_RESOLVE_RESCOPE,
         }[outcome]
+        if outcome is FounderDecision.PROCEED:
+            # Proceeding restores the pre-escalation status, which may be an
+            # active-slot state. Another assignment may have been started in the
+            # meantime, so INV-1 has to be re-checked here too.
+            prior = self._prior_status(assignment)
+            if prior is not None and prior.is_active_slot:
+                self._assert_active_slot_free(assignment.id)
         updated = self._transition(
             assignment, event, Actor.FOUNDER, reason=f"{escalation_id}: {decision}"
         )
@@ -671,8 +777,6 @@ class LifecycleService:
 
     def _materialise(self, template_name: str, predecessor: Assignment | None) -> Assignment:
         """Turn a pack template into a DRAFT assignment, then classify it to READY."""
-        from projectos.infrastructure.template_binding import bind_template
-
         found = self.packs.find_template(template_name)
         if found is None:
             raise ValidationError(
@@ -681,7 +785,7 @@ class LifecycleService:
             )
         _, template = found
 
-        draft = bind_template(
+        draft = self._templates.bind(
             template,
             assignment_id=self._assignments.next_id(),
             manifest=self.manifest,

@@ -47,6 +47,20 @@ def failed(criterion: AcceptanceCriterion, reason: str) -> CriterionResult:
     )
 
 
+#: Rule types decided entirely by the adapter's `found` flag. Every other rule type
+#: must have an explicit branch below. Listing them positively rather than falling
+#: through to a default is deliberate: a new rule type added without a branch now
+#: fails closed instead of silently always passing.
+_FOUND_IS_SUFFICIENT: frozenset[RuleType] = frozenset(
+    {
+        RuleType.FILE_EXISTS,
+        RuleType.FILE_CONTAINS,
+        RuleType.COMMIT_EXISTS,
+        RuleType.HUMAN_ATTESTATION,
+    }
+)
+
+
 def _rule_specific_check(rule: EvidenceRule, fact: RepositoryFact) -> bool:
     """Checks that need more than the adapter's `found` flag.
 
@@ -69,7 +83,8 @@ def _rule_specific_check(rule: EvidenceRule, fact: RepositoryFact) -> bool:
         expected = str(rule.params.get("decision", "approved"))
         return str(fact.data.get("decision", "")) == expected
 
-    return True
+    # Fail closed on anything not explicitly accounted for (INV-4).
+    return rule.type in _FOUND_IS_SUFFICIENT
 
 
 def _default_reason(rule: EvidenceRule, passed: bool) -> str:

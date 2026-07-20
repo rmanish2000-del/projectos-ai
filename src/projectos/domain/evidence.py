@@ -12,7 +12,9 @@ verification; they never carry a verdict (spec section 4.3).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any
 
 from projectos.domain.enums import CriterionOutcome, EvidenceClass, Role, RuleType
@@ -58,10 +60,18 @@ RULE_CAPABILITIES: dict[RuleType, str | None] = {
 
 @dataclass(frozen=True, slots=True)
 class EvidenceRule:
-    """One machine-checkable rule attached to an acceptance criterion."""
+    """One machine-checkable rule attached to an acceptance criterion.
+
+    `params` is validated once in `__post_init__` and then made genuinely
+    read-only. A plain dict on a frozen dataclass was an escape hatch: a
+    `pr_merged` rule validated as requiring two approvals could afterwards be
+    rewritten in place to require zero, and the rule engine would read the
+    mutated value. `frozen=True` protects the field binding, not the object it
+    points at, so the mapping itself has to be closed.
+    """
 
     type: RuleType
-    params: dict[str, Any] = field(default_factory=dict)
+    params: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         required, allowed = RULE_PARAMETERS[self.type]
@@ -78,8 +88,9 @@ class EvidenceRule:
                 f"Rule {self.type.value} received unknown parameters",
                 detail=f"Unknown: {', '.join(sorted(unknown))}",
             )
-        # Freeze the mapping so an evaluated rule cannot be mutated mid-verification.
-        object.__setattr__(self, "params", dict(self.params))
+        # Copy first so a caller holding the original dict cannot reach in later,
+        # then wrap read-only so the copy itself cannot be mutated either.
+        object.__setattr__(self, "params", MappingProxyType(dict(self.params)))
 
     @property
     def required_capability(self) -> str | None:

@@ -15,7 +15,7 @@ from projectos.domain.escalation import Escalation
 from projectos.domain.evidence import ApprovalRecord, EvidenceRule, RepositoryFact
 from projectos.domain.ids import AssignmentId, EscalationId
 from projectos.domain.manifest import Manifest
-from projectos.domain.pack import PackSet
+from projectos.domain.pack import PackSet, PackTemplate
 
 
 @runtime_checkable
@@ -70,6 +70,24 @@ class AuditLog(Protocol):
     def last(self) -> AuditEntry | None: ...
     def verify(self) -> None: ...
     def approvals_for(self, assignment_id: AssignmentId) -> tuple[ApprovalRecord, ...]: ...
+
+
+@runtime_checkable
+class TemplateBinder(Protocol):
+    """Turns a pack template into a DRAFT assignment.
+
+    A port because binding needs the serialisation layer to parse template bodies,
+    and the application layer must not reach into infrastructure to get it.
+    """
+
+    def bind(
+        self,
+        template: PackTemplate,
+        *,
+        assignment_id: AssignmentId,
+        manifest: Manifest,
+        predecessor: Assignment | None,
+    ) -> Assignment: ...
 
 
 @runtime_checkable

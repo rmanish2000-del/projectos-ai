@@ -136,7 +136,7 @@ extension, MCP server, or direct Claude/ChatGPT integration.
 ## Development
 
 ```bash
-python -m pytest      # 306 tests
+python -m pytest      # 377 tests
 python -m ruff check .
 python -m mypy
 ```

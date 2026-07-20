@@ -366,10 +366,12 @@ def cmd_history(args: argparse.Namespace) -> int:
     entries: tuple[AuditEntry, ...]
 
     if args.verify:
-        kernel.audit.verify()  # raises AuditChainBroken, halting the kernel
-        entries = kernel.audit.read_all()
+        # Chain integrity AND agreement with the state files: a chain that verifies
+        # in isolation can still be missing its tail.
+        report = kernel.lifecycle.verify_integrity()
         print(formatting.heading("AUDIT CHAIN"))
-        print(f"  {len(entries)} entries verified — hash chain intact (INV-5).")
+        print(f"  {report.describe()}.")
+        print("  Hash chain intact and consistent with state files (INV-5, INV-6).")
         return int(ExitCode.OK)
 
     if args.assignment:
