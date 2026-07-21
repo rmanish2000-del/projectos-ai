@@ -143,7 +143,7 @@ extension, MCP server, or direct Claude/ChatGPT integration.
 ## Development
 
 ```bash
-python -m pytest      # 452 tests
+python -m pytest      # 479 tests
 python -m ruff check .
 python -m mypy
 ```

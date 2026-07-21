@@ -169,7 +169,13 @@ def test_history_removed_from_an_assignment_file_is_detected(kernel, adapter, in
 
     path = initialised.assignment_file(str(assignment.id))
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    raw["state"]["history"] = raw["state"]["history"][:1]
+    # Drop a MIDDLE transition, keeping the last one so the persisted status still
+    # matches history[-1]. This isolates the reverse cross-check (a logged
+    # transition missing from history) from the state/history consistency check
+    # added in P1.6, which would otherwise fire first on a truncated tail.
+    history = raw["state"]["history"]
+    assert len(history) >= 3
+    raw["state"]["history"] = history[:1] + history[2:]
     path.write_text(yaml.dump(raw, sort_keys=False), encoding="utf-8")
 
     with pytest.raises(AuditChainBroken, match="missing a transition"):

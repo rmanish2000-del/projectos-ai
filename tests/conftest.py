@@ -17,6 +17,7 @@ from projectos.domain.assignment import Assignment
 from projectos.domain.enums import ExecutorType, RepositoryAdapterKind, RuleType, WorkType
 from projectos.domain.evidence import AcceptanceCriterion, EvidenceRule, RepositoryFact
 from projectos.domain.ids import AssignmentId
+from projectos.domain.manifest import Identity, Manifest
 from projectos.infrastructure.container import Kernel, build_kernel
 from projectos.infrastructure.paths import Layout
 from projectos.infrastructure.scaffold import build_manifest, scaffold
@@ -26,6 +27,24 @@ FOUNDER_ID = "founder@example.test"
 FOUNDER_NAME = "Test Founder"
 REVIEWER_ID = "reviewer@example.test"
 FIXED_INSTANT = "2026-07-20T09:00:00Z"
+
+#: The reviewer is a manifest owner distinct from the founder. Spec 8.6.2 binds
+#: reviewer authority to manifest.owners, so a reviewer must be a known identity.
+REVIEWER_IDENTITY = Identity(id=REVIEWER_ID, name="Test Reviewer")
+
+
+def make_manifest() -> Manifest:
+    """The manifest the fixtures scaffold, for tests constructing engines directly."""
+    return build_manifest(
+        project_id="test-project",
+        project_name="Test Project",
+        description="Fixture project",
+        founder_id=FOUNDER_ID,
+        founder_name=FOUNDER_NAME,
+        adapter=RepositoryAdapterKind.LOCAL_GIT,
+        default_branch="main",
+        extra_owners=(REVIEWER_IDENTITY,),
+    )
 
 
 class FakeAdapter:
@@ -76,16 +95,7 @@ def git_repo(repo_root: Path) -> Path:
 def initialised(repo_root: Path) -> Layout:
     repo_root.mkdir(parents=True, exist_ok=True)
     layout = Layout.for_repo(repo_root)
-    manifest = build_manifest(
-        project_id="test-project",
-        project_name="Test Project",
-        description="Fixture project",
-        founder_id=FOUNDER_ID,
-        founder_name=FOUNDER_NAME,
-        adapter=RepositoryAdapterKind.LOCAL_GIT,
-        default_branch="main",
-    )
-    scaffold(layout, manifest)
+    scaffold(layout, make_manifest())
     return layout
 
 

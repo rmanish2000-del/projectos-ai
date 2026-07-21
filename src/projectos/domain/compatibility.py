@@ -35,11 +35,12 @@ KERNEL_VERSION: str = __version__
 #: accidentally blank constraint is a parse error instead of a silent wildcard.
 ANY_VERSION = "*"
 
-#: Whitespace between clauses is accepted and normalised to the PEP 440 comma form,
-#: because spec section 5 writes constraints as `">=0.1.0 <0.2.0"`. This is a
-#: normalisation of an accepted syntax, not a second parser: everything after it is
-#: `packaging`.
-_CLAUSE_SEPARATOR = re.compile(r"\s*,\s*|\s+")
+#: Whitespace that *separates two clauses* — i.e. whitespace immediately before a
+#: comparison operator. Spec §5 writes constraints as `">=0.1.0 <0.2.0"`; that
+#: inter-clause space is normalised to the PEP 440 comma form. Whitespace *within*
+#: a clause (`">= 0.1.0"`, which packaging accepts natively) is left untouched, so a
+#: legal PEP 440 constraint is never rejected.
+_INTERCLAUSE_WHITESPACE = re.compile(r"\s*,\s*|\s+(?=[<>=!~])")
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,7 +73,10 @@ def parse_constraint(raw: str, *, source: str) -> SpecifierSet | None:
     if text == ANY_VERSION:
         return None
 
-    normalised = ",".join(part for part in _CLAUSE_SEPARATOR.split(text) if part)
+    # packaging accepts a comma-separated set and tolerates a space after an
+    # operator; it does not accept space-separated clauses. Convert only the
+    # inter-clause whitespace to commas, leaving intra-clause spacing intact.
+    normalised = _INTERCLAUSE_WHITESPACE.sub(",", text)
     try:
         return SpecifierSet(normalised)
     except InvalidSpecifier as exc:

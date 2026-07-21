@@ -37,8 +37,13 @@ class NullAudit:
 
 
 def engine_with(facts=None, capabilities=None) -> tuple[VerificationEngine, FakeAdapter]:
+    from tests.conftest import make_manifest
+
     adapter = FakeAdapter(facts=facts, capabilities=capabilities)
-    return VerificationEngine(adapter=adapter, audit=NullAudit()), adapter  # type: ignore[arg-type]
+    engine = VerificationEngine(
+        adapter=adapter, audit=NullAudit(), manifest=make_manifest()  # type: ignore[arg-type]
+    )
+    return engine, adapter
 
 
 def test_fabricated_claim_without_evidence_is_rejected() -> None:
@@ -119,7 +124,11 @@ def test_adapter_error_fails_closed() -> None:
         def query(self, rule: EvidenceRule) -> RepositoryFact:
             raise AdapterError("git exploded")
 
-    engine = VerificationEngine(adapter=ExplodingAdapter(), audit=NullAudit())  # type: ignore[arg-type]
+    from tests.conftest import make_manifest
+
+    engine = VerificationEngine(
+        adapter=ExplodingAdapter(), audit=NullAudit(), manifest=make_manifest()  # type: ignore[arg-type]
+    )
 
     report = engine.verify(make_assignment())
 

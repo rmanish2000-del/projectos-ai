@@ -81,6 +81,11 @@ SOFTWARE_CORE_TEMPLATES: dict[str, dict[str, Any]] = {
             "and type checking green."
         ),
         "stopping_point": "Stop after opening the pull request. Do not merge.",
+        # Acceptance criteria are verified from repository evidence (§8.3). Reviewer
+        # sign-off is the separate CLOSE gate that REVIEWED mode already requires
+        # (§7.3), so it must NOT also appear as an acceptance criterion: approval is
+        # only recordable once an assignment is VERIFIED, and verification cannot
+        # depend on the approval, or the two deadlock (P1.4 Blocker 4, §21.4).
         "acceptance_criteria": [
             {
                 "id": "AC-1",
@@ -90,11 +95,6 @@ SOFTWARE_CORE_TEMPLATES: dict[str, dict[str, Any]] = {
                     "message_pattern": "(?i)implement",
                 },
             },
-            {
-                "id": "AC-2",
-                "statement": "A reviewer has approved the work.",
-                "verify": {"type": "approval_recorded", "role": "reviewer"},
-            },
         ],
         "evidence_required": ["commit", "approval"],
     },
@@ -102,21 +102,18 @@ SOFTWARE_CORE_TEMPLATES: dict[str, dict[str, Any]] = {
         "title": "Harden and document the capability",
         "work_type": "document",
         "executor": "cowork",
-        "objective": "Document the capability and record the founder's release approval.",
-        "stopping_point": "Stop when documentation is committed and approval is recorded.",
+        "objective": "Document the capability; owner sign-off closes it at CLOSE.",
+        "stopping_point": "Stop when documentation is committed.",
+        # As above: the CLOSE-time approval is the workflow-mode gate, not an
+        # acceptance criterion. Document work is FAST, so the owner closes it.
         "acceptance_criteria": [
             {
                 "id": "AC-1",
                 "statement": "The README documents the capability.",
                 "verify": {"type": "file_exists", "path": "README.md"},
             },
-            {
-                "id": "AC-2",
-                "statement": "The founder has approved the release.",
-                "verify": {"type": "approval_recorded", "role": "founder"},
-            },
         ],
-        "evidence_required": ["approval"],
+        "evidence_required": ["commit"],
     },
 }
 
@@ -132,15 +129,24 @@ def build_manifest(
     default_branch: str,
     github_owner: str | None = None,
     github_repo: str | None = None,
+    extra_owners: tuple[Identity, ...] = (),
 ) -> Manifest:
+    """Build the project manifest.
+
+    `extra_owners` lists additional manifest-authorized identities beyond the
+    founder — the pool from which reviewers are drawn (spec 8.6.2). The `init`
+    command scaffolds a single-founder manifest; a project adds owners by editing
+    `manifest.yaml`.
+    """
     founder = Identity(id=founder_id, name=founder_name)
+    owners = (founder, *(o for o in extra_owners if o.id != founder.id))
     return Manifest(
         schema_version=1,
         project_id=project_id,
         project_name=project_name,
         description=description,
         founder=founder,
-        owners=(founder,),
+        owners=owners,
         packs=(PackRequirement(DEFAULT_PACK, ">=0.1.0 <0.2.0"),),
         repository=RepositoryConfig(
             adapter=adapter,

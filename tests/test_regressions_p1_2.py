@@ -534,8 +534,15 @@ def approval_criterion(role: str = "owner") -> AcceptanceCriterion:
     )
 
 
+def _rec(role: Role, actor: str, decision: Decision) -> ApprovalRecord:
+    """An approval record carrying the event its decision implies (spec 8.6.2)."""
+    event = "attestation_recorded" if decision is Decision.ATTESTED else "approval_recorded"
+    return ApprovalRecord("A-0001", role, actor, decision, "t", event)
+
+
 def engine_over(records: tuple[ApprovalRecord, ...]):
     from projectos.application.verification import VerificationEngine
+    from tests.conftest import make_manifest
 
     class Stub:
         def approvals_for(self, assignment_id: object) -> tuple[ApprovalRecord, ...]:
@@ -548,13 +555,15 @@ def engine_over(records: tuple[ApprovalRecord, ...]):
         def query(self, rule: object) -> object:
             raise AssertionError("approval rules must not reach the adapter")
 
-    return VerificationEngine(adapter=NoAdapter(), audit=Stub())  # type: ignore[arg-type]
+    return VerificationEngine(
+        adapter=NoAdapter(), audit=Stub(), manifest=make_manifest()  # type: ignore[arg-type]
+    )
 
 
 def test_approval_fact_finds_a_valid_owner_approval() -> None:
     """@CONTROL."""
     engine = engine_over(
-        (ApprovalRecord("A-0001", Role.OWNER, FOUNDER_ID, Decision.APPROVED, "t"),)
+        (_rec(Role.OWNER, FOUNDER_ID, Decision.APPROVED),)
     )
 
     fact = engine._approval_fact(make_assignment(), approval_criterion())
@@ -566,7 +575,7 @@ def test_approval_fact_finds_a_valid_owner_approval() -> None:
 def test_approval_fact_finds_an_authorized_reviewer_approval() -> None:
     """@CONTROL — a non-owner reviewer is permitted (spec 4.1)."""
     engine = engine_over(
-        (ApprovalRecord("A-0001", Role.REVIEWER, REVIEWER_ID, Decision.APPROVED, "t"),)
+        (_rec(Role.REVIEWER, REVIEWER_ID, Decision.APPROVED),)
     )
 
     assert engine._approval_fact(make_assignment(), approval_criterion("reviewer")).found
@@ -577,13 +586,13 @@ def test_approval_fact_is_absent_when_no_record_exists() -> None:
     fact = engine_over(())._approval_fact(make_assignment(), approval_criterion())
 
     assert not fact.found
-    assert "no recorded" in fact.detail
+    assert "no authorized" in fact.detail
 
 
 def test_approval_fact_ignores_a_different_role() -> None:
     """@CONTROL — missing authority must not satisfy the criterion."""
     engine = engine_over(
-        (ApprovalRecord("A-0001", Role.REVIEWER, REVIEWER_ID, Decision.APPROVED, "t"),)
+        (_rec(Role.REVIEWER, REVIEWER_ID, Decision.APPROVED),)
     )
 
     assert not engine._approval_fact(make_assignment(), approval_criterion("founder")).found
@@ -592,7 +601,7 @@ def test_approval_fact_ignores_a_different_role() -> None:
 def test_an_attestation_does_not_satisfy_an_approval_rule() -> None:
     """@REGRESSION — the two evidence kinds must not be interchangeable."""
     engine = engine_over(
-        (ApprovalRecord("A-0001", Role.FOUNDER, FOUNDER_ID, Decision.ATTESTED, "t"),)
+        (_rec(Role.FOUNDER, FOUNDER_ID, Decision.ATTESTED),)
     )
 
     fact = engine._approval_fact(make_assignment(), approval_criterion("founder"))
@@ -606,8 +615,8 @@ def test_an_approval_after_an_attestation_is_still_found() -> None:
     record, so an earlier attestation masked a later genuine approval."""
     engine = engine_over(
         (
-            ApprovalRecord("A-0001", Role.FOUNDER, FOUNDER_ID, Decision.ATTESTED, "t1"),
-            ApprovalRecord("A-0001", Role.FOUNDER, FOUNDER_ID, Decision.APPROVED, "t2"),
+            _rec(Role.FOUNDER, FOUNDER_ID, Decision.ATTESTED),
+            _rec(Role.FOUNDER, FOUNDER_ID, Decision.APPROVED),
         )
     )
 
@@ -617,7 +626,7 @@ def test_an_approval_after_an_attestation_is_still_found() -> None:
 def test_approval_fact_never_consults_the_repository_adapter() -> None:
     """@CONTROL — approvals live in the audit log; the stub asserts on contact."""
     engine = engine_over(
-        (ApprovalRecord("A-0001", Role.OWNER, FOUNDER_ID, Decision.APPROVED, "t"),)
+        (_rec(Role.OWNER, FOUNDER_ID, Decision.APPROVED),)
     )
 
     assert engine.verify(make_assignment(rule=EvidenceRule(

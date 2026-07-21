@@ -218,6 +218,10 @@ class ApprovalRecord:
     actor: str
     decision: Decision
     timestamp: str
+    #: The audit event the record was projected from (`approval_recorded` or
+    #: `attestation_recorded`). Carried so the read path can enforce the
+    #: event/decision binding of spec 8.6.2 without re-reading the log.
+    event: str = ""
 
     def __post_init__(self) -> None:
         if not isinstance(self.decision, Decision):

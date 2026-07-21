@@ -35,12 +35,13 @@ from projectos.application.verification import (
     reject_code_evidence_on_document_work,
 )
 from projectos.domain import next_engine, routing
-from projectos.domain.approvals import ApprovalStatus, reviewer_is_independent
+from projectos.domain.approvals import ApprovalStatus, decision_matches_event, is_authorized
 from projectos.domain.approvals import evaluate as evaluate_approvals
 from projectos.domain.assignment import Assignment, TransitionRecord
 from projectos.domain.audit import AuditEntry, seal_next
 from projectos.domain.classification import Classification, classify
 from projectos.domain.dependency import DependencyGraph
+from projectos.domain.digest import immutable_digest
 from projectos.domain.enums import (
     Actor,
     Decision,
@@ -59,7 +60,7 @@ from projectos.domain.errors import (
     ValidationError,
 )
 from projectos.domain.escalation import Escalation, EscalationOption, Resolution
-from projectos.domain.evidence import CompletionClaim, VerificationReport
+from projectos.domain.evidence import ApprovalRecord, CompletionClaim, VerificationReport
 from projectos.domain.ids import AssignmentId, EscalationId
 from projectos.domain.manifest import Manifest
 from projectos.domain.pack import PackSet
@@ -303,12 +304,20 @@ class LifecycleService:
             )
             return classified, classification
 
+        # Bind the immutable-field digest into the (hash-chained) classify_ok entry.
+        # From here the assignment is immutable except for `state` (§6.1); any later
+        # hand-edit to scope or classification will not match this digest and halts
+        # the kernel on the next load.
         ready = self._transition(
             classified,
             Event.CLASSIFY_OK,
             Actor.KERNEL,
             reason=classification.describe(),
-            data={"mode": classification.mode.value, "rule": classification.rule},
+            data={
+                "mode": classification.mode.value,
+                "rule": classification.rule,
+                "immutable_digest": immutable_digest(classified),
+            },
         )
         return ready, classification
 
@@ -357,7 +366,9 @@ class LifecycleService:
             )
 
         verifying = self._transition(assignment, Event.VERIFY_START, Actor.KERNEL)
-        engine = VerificationEngine(adapter=self._adapter, audit=self._audit)
+        engine = VerificationEngine(
+            adapter=self._adapter, audit=self._audit, manifest=self.manifest
+        )
 
         try:
             report = engine.verify(verifying)
@@ -411,7 +422,29 @@ class LifecycleService:
         return evaluate_approvals(
             assignment.workflow_mode,
             assignment.work_type,
-            self._audit.approvals_for(assignment.id),
+            self._authorized_approvals(assignment),
+        )
+
+    def _authorized_approvals(self, assignment: Assignment) -> tuple[ApprovalRecord, ...]:
+        """Recorded approvals that survive §8.6.2 authority validation.
+
+        The CLOSE gate must apply the same read-time authority check as verification:
+        a hand-appended approval attributed to an unauthorized identity, or with an
+        inconsistent event/decision pairing, must not count toward closing an
+        assignment. The raw projection returns every record; the kernel decides
+        which ones count.
+        """
+        manifest = self.manifest
+        return tuple(
+            record
+            for record in self._audit.approvals_for(assignment.id)
+            if decision_matches_event(record.decision, record.event)
+            and is_authorized(
+                manifest,
+                role=record.role,
+                actor=record.actor,
+                assignment_owner=assignment.owner,
+            )
         )
 
     def approve(self, assignment_id: AssignmentId, role: Role) -> tuple[Assignment, ApprovalStatus]:
@@ -449,18 +482,24 @@ class LifecycleService:
     def _validate_authority(self, assignment: Assignment, role: Role) -> None:
         """Check that the acting identity may speak in `role` for this assignment.
 
-        Shared by `approve` and `attest`. Attestation previously validated nothing,
-        so any identity could attest as founder and satisfy a `human_attestation`
-        criterion — the R-8 rubber-stamp risk, with the identity logged but never
-        checked. Both paths record evidence, so both go through the same gate.
+        Shared by `approve` and `attest`, and using the *same* `is_authorized`
+        predicate the verification read path uses (spec 8.6.2), so an entry the
+        kernel would record and an entry appended by hand are held to identical
+        rules. Attestation previously validated nothing (R-8); a reviewer was only
+        checked for independence, which left the reviewer role unbounded and
+        therefore forgeable (R-9). Both are closed by requiring an authorized
+        identity here and re-checking on read.
         """
         actor_id = self._identity.current()
         manifest = self.manifest
+        if is_authorized(
+            manifest, role=role, actor=actor_id, assignment_owner=assignment.owner
+        ):
+            return
 
-        # Deliberately not requiring every actor to be in manifest.owners: spec 4.1
-        # allows a reviewer to be an outside human or a second agent session, so
-        # only the owner role is bound to the owner list.
-        if role is Role.FOUNDER and not manifest.is_founder(actor_id):
+        # Rejected. Produce a role-specific message; the decision above is the single
+        # source of truth, this only explains it.
+        if role is Role.FOUNDER:
             raise InvariantViolation(
                 f"{actor_id!r} is not the founder ({manifest.founder.id})",
                 detail="Founder decisions are validated against manifest.project.founder.id.",
@@ -471,18 +510,23 @@ class LifecycleService:
                     f"{actor_id!r} is not listed in manifest.owners",
                     detail="An owner decision must come from an identity the project knows.",
                 )
-            if not (actor_id == assignment.owner or manifest.is_founder(actor_id)):
-                raise InvariantViolation(
-                    f"{actor_id!r} does not own {assignment.id} ({assignment.owner})",
-                    detail=(
-                        "An owner decision must come from the assignment's owner or the founder."
-                    ),
-                )
-        if role is Role.REVIEWER and not reviewer_is_independent(actor_id, assignment.owner):
             raise InvariantViolation(
-                f"{actor_id!r} owns {assignment.id} and cannot review it",
-                detail="A reviewer must be independent of the executor (spec 4.1).",
+                f"{actor_id!r} does not own {assignment.id} ({assignment.owner})",
+                detail="An owner decision must come from the assignment's owner or the founder.",
             )
+        # Reviewer.
+        if not manifest.is_owner(actor_id):
+            raise InvariantViolation(
+                f"{actor_id!r} is not a manifest owner and cannot review {assignment.id}",
+                detail=(
+                    "Spec 8.6.2 binds reviewer authority to manifest.owners so an appended "
+                    "reviewer approval cannot be forged from an unknown identity."
+                ),
+            )
+        raise InvariantViolation(
+            f"{actor_id!r} owns {assignment.id} and cannot review it",
+            detail="A reviewer must be independent of the executor (spec 4.1).",
+        )
 
     def attest(self, assignment_id: AssignmentId, role: Role) -> None:
         """Record a human attestation for facts outside the repository (spec 8.2)."""

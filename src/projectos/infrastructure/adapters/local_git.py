@@ -6,8 +6,9 @@ criterion passed. Capabilities it lacks (PRs, CI, artifacts) are declared as
 the missing capability, rather than silently skipping them.
 
 Reads are performed through `git` so that evidence reflects committed history
-rather than the working tree. `file_exists` falls back to the working tree only
-when the repository has no commits yet, and says so in the reported detail.
+rather than the working tree. There is no working-tree fallback: a path or commit
+that is not committed is not evidence, and a directory that is not a git repository
+at all raises `AdapterError` rather than reporting untracked files as facts.
 """
 
 from __future__ import annotations
@@ -152,9 +153,6 @@ class LocalGitAdapter:
                     "Run `git init` and commit the work before verifying."
                 ),
             )
-
-    def _has_commits(self) -> bool:
-        return self._git(["rev-parse", "--verify", "HEAD"], allow_failure=True) is not None
 
     def _show(self, spec: str) -> str | None:
         return self._git(["show", spec], allow_failure=True)

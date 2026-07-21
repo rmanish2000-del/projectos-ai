@@ -15,8 +15,9 @@ from dataclasses import dataclass
 
 from projectos.application.ports import AuditLog, RepositoryAdapter
 from projectos.domain import rule_engine
+from projectos.domain.approvals import decision_matches_event, is_authorized
 from projectos.domain.assignment import CODE_EVIDENCE_CLASSES, Assignment
-from projectos.domain.enums import CriterionOutcome, Decision, RuleType
+from projectos.domain.enums import CriterionOutcome, Decision, Role, RuleType
 from projectos.domain.errors import AdapterError, ValidationError
 from projectos.domain.evidence import (
     AcceptanceCriterion,
@@ -25,12 +26,17 @@ from projectos.domain.evidence import (
     RepositoryFact,
     VerificationReport,
 )
+from projectos.domain.manifest import Manifest
 
 
 @dataclass(frozen=True, slots=True)
 class VerificationEngine:
     adapter: RepositoryAdapter
     audit: AuditLog
+    #: The manifest is required so approval/attestation authority can be re-validated
+    #: on the read path (spec 8.6.2). A hand-appended approval never passed the write
+    #: path, so verification cannot trust the record's own claim of authority.
+    manifest: Manifest
 
     def verify(self, assignment: Assignment) -> VerificationReport:
         capabilities = self.adapter.capabilities()
@@ -101,25 +107,47 @@ class VerificationEngine:
         a false negative: an attestation recorded before an approval would mask the
         approval that followed it.
         """
-        wanted_role = str(criterion.verify.params["role"])
+        wanted_role_value = str(criterion.verify.params["role"])
+        wanted_role = Role(wanted_role_value)
         seen: list[str] = []
+        unauthorized = 0
 
         for record in self.audit.approvals_for(assignment.id):
-            if record.role.value != wanted_role:
+            if record.role is not wanted_role or record.decision is not wanted:
+                if record.role is wanted_role:
+                    seen.append(record.decision.value)
                 continue
-            if record.decision is wanted:
-                return RepositoryFact(
-                    kind=kind,
-                    found=True,
-                    detail=(
-                        f"{wanted.value} by {record.actor} as {wanted_role} "
-                        f"at {record.timestamp}"
-                    ),
-                    data={"decision": record.decision.value},
-                )
-            seen.append(record.decision.value)
 
-        detail = f"no recorded '{wanted_role}' {kind} for {assignment.id}"
+            # Spec 8.6.2: an entry counts only if its event/decision pairing is
+            # consistent AND its actor is manifest-authorized for the role. A
+            # hand-appended forgery attributed to an unauthorized identity — the
+            # P1.4 exploit — is rejected here rather than trusted.
+            if not decision_matches_event(record.decision, record.event):
+                unauthorized += 1
+                continue
+            if not is_authorized(
+                self.manifest,
+                role=record.role,
+                actor=record.actor,
+                assignment_owner=assignment.owner,
+            ):
+                unauthorized += 1
+                continue
+
+            return RepositoryFact(
+                kind=kind,
+                found=True,
+                detail=(
+                    f"{wanted.value} by {record.actor} as {wanted_role_value} "
+                    f"at {record.timestamp}"
+                ),
+                data={"decision": record.decision.value},
+            )
+
+        detail = f"no authorized '{wanted_role_value}' {kind} for {assignment.id}"
+        if unauthorized:
+            detail += f" ({unauthorized} entr{'y' if unauthorized == 1 else 'ies'} rejected: "
+            detail += "unauthorized identity or inconsistent event/decision)"
         if seen:
             detail += f" (found instead: {', '.join(sorted(set(seen)))})"
         return RepositoryFact(kind=kind, found=False, detail=detail)

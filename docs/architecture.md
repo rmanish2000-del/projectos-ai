@@ -151,6 +151,44 @@ kernel (INV-6) rather than being noticed later.
 Files rotate monthly for filing convenience, but the chain runs continuously across
 them: starting a fresh file does not escape verification.
 
+### State/history consistency and immutable fields (§6.1)
+
+The cross-check above catches *dropped* entries but not a direct edit to an
+assignment's own fields. Two further checks in `application/integrity.py` close
+that, and run on every load:
+
+- **State/history consistency** — a hand-set `status: closed` no longer agrees with
+  the last recorded transition, so `state.status` must equal the `to_status` of
+  `history[-1]` (a fresh DRAFT has empty history).
+- **Immutable-field digest** — at `classify_ok` the kernel binds a SHA-256 digest of
+  the assignment's scope-defining fields (`domain/digest.py`) into the hash-chained
+  audit entry. On load it recomputes and compares, so editing acceptance criteria,
+  `workflow_mode`, a rule parameter, or any immutable field after DRAFT halts the
+  kernel. Scope change remains cancel-and-reissue (decision D-5).
+
+### Audit authenticity: what the chain does and does not prove (§8.6)
+
+The chain is **unkeyed**, so a process that can write `.projectos/` can compute a
+valid next hash and *append* a correctly-linked entry. The chain cannot detect that
+by itself, and the spec (§8.6) says so plainly. v0.1 layers three properties it
+*can* guarantee, and names the one it cannot:
+
+- corruption detection and state/history consistency (above) — **halt**;
+- **actor authorization** — an `approval_recorded`/`attestation_recorded` entry is
+  counted only if its event/decision pairing is consistent and its actor is
+  manifest-authorized for the role, re-validated on the read path (verification and
+  the CLOSE gate) using the same `is_authorized` predicate as the write path. A
+  forged approval attributed to an unknown identity grants nothing;
+- **cryptographic authenticity** — proving an entry attributed to an *authorized*
+  identity was really produced by it — is **not** provided; a signed-records item is
+  deferred to v0.2 (R-9). In the single-founder local model the forging process runs
+  as the founder, so this is a conscious acceptance, not an oversight.
+
+Reviewer authority is bound to `manifest.owners`: a reviewer must be a manifest
+owner other than the assignment's owner. There is no separate reviewer registry, so
+this is the only authorization list, and it is what makes an appended reviewer
+approval from an unknown identity forgeable-in-name-only rather than accepted.
+
 ### Invariants and where they live
 
 | Invariant | Enforced by |
@@ -220,12 +258,13 @@ criteria asked for.
 
 ## Testing strategy
 
-452 tests, organised by the guarantee each defends:
+479 tests, organised by the guarantee each defends:
 
 | File | Focus |
 |---|---|
 | `test_regressions_p1_1.py` | One test per P1.1 audit defect; each verified to fail against the pre-fix code |
 | `test_regressions_p1_2.py` | P1.2 contract completion; tests labelled `@REGRESSION` / `@CONTROL` by measured pre-fix outcome |
+| `test_regressions_p1_6.py` | P1.6 integrity remediation; `@REGRESSION` blocker fixes + `@MUTATION` guards for the eight P1.4 survivors |
 | `test_state_machine.py` | Transition coverage against a hand-written spec table, including every illegal combination |
 | `test_audit.py` | Hash chain against realistic tampering — edit, delete, reorder, forge |
 | `test_verification.py` | Fail-closed behaviour and the fabricated-claim guarantee |
@@ -240,12 +279,13 @@ identity, so nothing depends on the machine's git config, wall clock, or test
 ordering.
 
 **Expectations come from outside the implementation.** `test_state_machine.py`
-holds the transition table transcribed by hand from spec §7.2, plus a short,
-explicitly declared `KERNEL_EXTENSIONS` list. Deriving expectations from
-`TRANSITIONS` made the test self-referential: rewiring a destination in the table
-produced zero failures, so the component the docstring calls "the frozen core" was
-the one the suite verified least. Rows the kernel adds beyond the spec must now be
-declared in `KERNEL_EXTENSIONS` to pass, so no row can be added silently.
+holds the transition table transcribed by hand from spec §7.2 (including the two
+blocking rows made normative in §7.2.1). Deriving expectations from `TRANSITIONS`
+made the test self-referential: rewiring a destination in the table produced zero
+failures, so the component the docstring calls "the frozen core" was the one the
+suite verified least. Every production transition must now appear in the
+hand-written spec table, in both directions — P1.2 folded the earlier informal
+`KERNEL_EXTENSIONS` rows into the normative spec, so no row can be added silently.
 
 ## Traceability to v0.1 acceptance criteria
 

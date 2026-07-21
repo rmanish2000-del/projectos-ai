@@ -57,10 +57,11 @@ def test_modified_payload_is_detected() -> None:
 
 
 def test_removed_entry_is_detected() -> None:
+    """Deleting a middle entry breaks the sequence contiguity of the tail."""
     entries = list(chain_of(4))
     del entries[2]
 
-    with pytest.raises(AuditChainBroken):
+    with pytest.raises(AuditChainBroken, match="sequence break"):
         verify_chain(tuple(entries))
 
 
@@ -68,7 +69,9 @@ def test_reordered_entries_are_detected() -> None:
     entries = list(chain_of(3))
     entries[0], entries[1] = entries[1], entries[0]
 
-    with pytest.raises(AuditChainBroken):
+    # Swapping the first two makes entry at position 1 carry sequence 2: caught by
+    # the sequence check. `match=` pins which check fired so removing it is caught.
+    with pytest.raises(AuditChainBroken, match="sequence break"):
         verify_chain(tuple(entries))
 
 
@@ -82,7 +85,7 @@ def test_forged_appended_entry_is_detected() -> None:
     entries = list(chain_of(2))
     entries.append(seal_next(entry(3, "forged"), entries[0]))  # wrong parent
 
-    with pytest.raises(AuditChainBroken):
+    with pytest.raises(AuditChainBroken, match="sequence break"):
         verify_chain(tuple(entries))
 
 

@@ -109,6 +109,7 @@ class NdjsonAuditLog:
                     actor=str(entry.data.get("actor", entry.actor)),
                     decision=decision,
                     timestamp=entry.timestamp,
+                    event=entry.event,
                 )
             )
         return tuple(records)
