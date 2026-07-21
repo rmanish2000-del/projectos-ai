@@ -221,6 +221,17 @@ def list_projects(workspace_root: Path) -> tuple[ProjectStatus, ...]:
     return tuple(project_status(workspace.root, p) for p in workspace.projects)
 
 
+def find_project(workspace_root: Path, identifier: str) -> ResolvedProject | None:
+    """Look up a registered project by its identifier.
+
+    Matches the project's own `project.id` first, then falls back to its workspace
+    registration name, so either form of identifier resolves. Read-only. Delegates
+    to the resolved-workspace lookups; no lookup logic is duplicated here.
+    """
+    workspace = resolve_workspace(workspace_root.resolve())
+    return workspace.by_id(identifier) or workspace.by_name(identifier)
+
+
 # -- helpers ------------------------------------------------------------------
 
 
