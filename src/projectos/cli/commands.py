@@ -93,6 +93,8 @@ def cmd_workspace(args: argparse.Namespace) -> int:
         return _cmd_workspace_init_project(args)
     if args.workspace_command == "list":
         return _cmd_workspace_list(args)
+    if args.workspace_command == "discover":
+        return _cmd_workspace_discover(args)
     raise ValidationError(f"Unknown workspace command {args.workspace_command!r}")
 
 
@@ -189,6 +191,63 @@ def _cmd_workspace_list(args: argparse.Namespace) -> int:
         print(f"    pack        {status.pack or '—'}")
         print(f"    repository  {status.repository}")
         print(f"    kernel      {state}    active assignment: {active}")
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_discover(args: argparse.Namespace) -> int:
+    """`workspace discover` — find, validate, and classify projects (P6).
+
+    Report-only by default and under `--dry-run`; `--register` (without `--dry-run`)
+    registers valid, unregistered projects. Never overwrites an existing registration.
+    """
+    from projectos.infrastructure.workspace_discovery import (
+        DiscoveryStatus,
+        discover_workspace,
+    )
+
+    report = discover_workspace(
+        Path(args.workspace), register=args.register, dry_run=args.dry_run
+    )
+
+    mode = "REGISTER" if not report.dry_run else "DRY RUN"
+    print(formatting.heading(f"WORKSPACE DISCOVER  {report.root}  [{mode}]"))
+    print(
+        f"  scanned {report.scanned}    valid {len(report.valid)}    "
+        f"registered {len(report.already_registered)}    "
+        f"unregistered {len(report.unregistered)}    "
+        f"duplicates {len(report.duplicates)}    invalid {len(report.invalid)}"
+    )
+
+    if report.projects:
+        print()
+        symbol = {
+            DiscoveryStatus.REGISTERED: "=",
+            DiscoveryStatus.UNREGISTERED: "+",
+            DiscoveryStatus.DUPLICATE_IDENTIFIER: "!",
+            DiscoveryStatus.DUPLICATE_REPOSITORY: "!",
+            DiscoveryStatus.INVALID: "x",
+        }
+        for project in report.projects:
+            tag = " (registered now)" if project.registered_now else ""
+            ident = project.project_id or "—"
+            print(
+                f"  {symbol[project.status]} {project.rel_path}  "
+                f"[{project.status.value}]  id={ident}{tag}"
+            )
+            if project.conflicts_with is not None:
+                print(f"      conflicts with {project.conflicts_with}")
+            if project.error is not None:
+                print(f"      {project.error}")
+
+    print()
+    if not report.dry_run:
+        print(f"  Registered {len(report.newly_registered)} project(s) this run.")
+    elif report.unregistered:
+        print(
+            f"  {len(report.unregistered)} unregistered — re-run with --register to add them."
+        )
+    else:
+        print("  Nothing to register.")
     return int(ExitCode.OK)
 
 

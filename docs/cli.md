@@ -122,6 +122,30 @@ projectos workspace list [--workspace PATH]
 Shows each project's id, pack, repository path, whether its kernel is initialised,
 and its active assignment.
 
+## `projectos workspace discover`
+
+Discover projects under the workspace's `Projects/` area, validate each, and report
+its registration status. The standard onboarding mechanism: drop a project directory
+into the workspace and let discovery find and register it, rather than running
+`add-project` by hand for each one.
+
+```bash
+projectos workspace discover [--workspace PATH] [--register] [--dry-run]
+```
+
+The walk is depth-bounded (never recurses infinitely), visits directories in sorted
+order, treats a directory containing `project.yaml` as a candidate and a boundary
+(its contents are not scanned for nested projects), and skips dot-directories and
+common vendor directories (`node_modules`, `venv`, …). Each candidate is classified
+as **registered**, **unregistered**, **invalid** (its `project.yaml` failed
+validation), **duplicate-identifier**, or **duplicate-repository**.
+
+Report-only by default and under `--dry-run`. With `--register` (and not `--dry-run`)
+it registers the valid, unregistered candidates: it appends each to `Workspace.yaml`
+and never overwrites an existing registration or a discovered project's own
+`project.yaml`. `--dry-run` overrides `--register`, so a dry run always leaves state
+untouched. Re-running after a register is a visible no-op (idempotent).
+
 ## The rapid-build pack
 
 `workspace init` ships one **loadable** pack, `rapid-build` (the others are
