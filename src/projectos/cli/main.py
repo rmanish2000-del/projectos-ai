@@ -68,6 +68,29 @@ def build_parser() -> argparse.ArgumentParser:
         "--force", action="store_true", help="Overwrite an existing manifest."
     )
 
+    # -- workspace -------------------------------------------------------------
+    workspace = subparsers.add_parser(
+        "workspace", help="Local-first multi-project workspace tooling."
+    )
+    workspace_subs = workspace.add_subparsers(dest="workspace_command", required=True)
+    workspace_init = workspace_subs.add_parser(
+        "init", help="Bootstrap a workspace directory tree (idempotent)."
+    )
+    workspace_init.add_argument(
+        "path",
+        nargs="?",
+        default="Workspace",
+        help="Workspace root directory (default: ./Workspace). Created if missing.",
+    )
+    workspace_init.add_argument(
+        "--name", default=None, help="Workspace name (default: the root directory name)."
+    )
+    workspace_init.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing starter files (default: preserve them).",
+    )
+
     # -- validate --------------------------------------------------------------
     subparsers.add_parser(
         "validate", help="Validate manifest, packs, and state. Makes no changes."
@@ -186,6 +209,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 HANDLERS = {
     "init": commands.cmd_init,
+    "workspace": commands.cmd_workspace,
     "validate": commands.cmd_validate,
     "pack": commands.cmd_pack,
     "status": commands.cmd_status,

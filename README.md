@@ -62,6 +62,7 @@ projectos next                      # generate the successor
 
 | Command | What it does |
 |---|---|
+| `projectos workspace init [PATH]` | Bootstrap a local-first multi-project workspace tree (idempotent) |
 | `projectos init` | Scaffold `.projectos/` with a manifest and the `software-core` pack |
 | `projectos validate` | Check manifest, packs, versions, and state. Changes nothing |
 | `projectos pack validate <path>` | Check a pack directory without installing it |
@@ -101,6 +102,11 @@ Deterministic, so agents can branch on them without parsing prose:
 Everything ProjectOS knows lives under `.projectos/`. Deleting that directory
 removes ProjectOS from a repository with zero residue — that is the portability
 guarantee, and the kernel writes nowhere else.
+
+A **workspace** (created by `projectos workspace init`) is the local-first layer
+above individual projects — it holds `Shared/` packs and assets and a `Projects/`
+registry. It is pure scaffolding: the generator writes only under the workspace
+root and never touches the kernel.
 
 ## Architecture
 

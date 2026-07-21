@@ -80,6 +80,39 @@ def cmd_init(args: argparse.Namespace) -> int:
     return int(ExitCode.OK)
 
 
+# -- workspace ----------------------------------------------------------------
+
+
+def cmd_workspace(args: argparse.Namespace) -> int:
+    """`workspace init <path>` — bootstrap a local-first workspace (P3).
+
+    Idempotent: creates whatever is missing and preserves existing files, so a
+    second run is a visible no-op rather than a corruption.
+    """
+    from projectos.infrastructure.workspace import bootstrap_workspace
+
+    root = Path(args.path).resolve()
+    result = bootstrap_workspace(root, name=args.name, force=args.force)
+
+    title = "WORKSPACE CREATED" if result.is_fresh else "WORKSPACE UPDATED (idempotent)"
+    print(formatting.heading(f"{title}  {result.root}"))
+    print(f"  created: {len(result.created)}    kept: {len(result.kept)}")
+    if result.created:
+        print()
+        print("  new:")
+        for path in result.created:
+            print(f"    + {path}")
+    if result.kept and not result.is_fresh:
+        print()
+        print(
+            f"  preserved {len(result.kept)} existing item(s) — "
+            "re-run with --force to overwrite."
+        )
+    print()
+    print(f"  Workspace manifest: {result.root / 'Workspace.yaml'}")
+    return int(ExitCode.OK)
+
+
 # -- validate -----------------------------------------------------------------
 
 
