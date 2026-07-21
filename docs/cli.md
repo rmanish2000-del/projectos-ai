@@ -79,6 +79,54 @@ Each pack skeleton contains `README.md`, `project_rules.yaml`,
 existing file — a second run is a visible no-op (`created: 0`). `--force` overwrites
 the generated starter files. Always exits `0`. Writes only under `PATH`; no network.
 
+## `projectos workspace add-project`
+
+Register a project in an existing workspace. Idempotent; writes only under the
+workspace.
+
+```bash
+projectos workspace add-project <name> [--workspace PATH] [--pack rapid-build] \
+  [--project-id ID] [--description "..."] [--repo PATH] [--force]
+```
+
+Appends the project to `Workspace.yaml` and writes `Projects/<name>/project.yaml`.
+`--repo` records the project's repository path (optional). `--pack` names the pack
+backing the project (default `rapid-build`, the one pack that ships loadable).
+
+## `projectos workspace init-project`
+
+Scaffold a registered project's ProjectOS kernel from its workspace pack, so the
+kernel can run against it. Idempotent — it will not overwrite an existing
+`.projectos/` without `--force`.
+
+```bash
+projectos workspace init-project <name> [--workspace PATH] \
+  --founder-id <id> --founder-name <name> [--force]
+```
+
+Writes `.projectos/` into the project's repository (its `--repo` path, or the
+project directory) and installs the workspace pack. Afterwards
+`projectos --repo <repository> next` operates the project normally.
+
+## `projectos workspace list`
+
+Read-only status for every registered project.
+
+```bash
+projectos workspace list [--workspace PATH]
+```
+
+Shows each project's id, pack, repository path, whether its kernel is initialised,
+and its active assignment.
+
+## The rapid-build pack
+
+`workspace init` ships one **loadable** pack, `rapid-build` (the others are
+skeletons for a pack author to fill in). It is the fast, minimal domain: a
+`foundation` pipeline of `define-task` → `build-task`, both FAST (the owner closes).
+`projectos pack validate Shared/Packs/rapid-build` passes, and a project created
+from it generates assignments through the normal `next` flow.
+
 ### Workspace manifest schemas
 
 The workspace is read back into typed values by the Workspace Runtime loader
