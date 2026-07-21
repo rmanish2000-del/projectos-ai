@@ -283,6 +283,21 @@ state:                         # KERNEL-MANAGED — never hand-edited
 
 **Immutability rule:** after an assignment leaves `DRAFT`, only `state` may change. Changing scope requires cancelling (`CANCELLED`) and issuing a new assignment — this keeps the audit trail honest.
 
+### 6.1 Immutable-field and state/history integrity (normative)
+
+The immutability rule above was, until this amendment, enforced only *within* kernel code paths: no kernel operation edited scope, but nothing detected a *hand-edit* to an assignment file. A direct edit to `state.status` or to `acceptance_criteria`/`workflow_mode` therefore went undetected. v0.1 now binds these to the tamper-evident audit chain so a hand-edit halts the kernel.
+
+**Immutable field set.** For an assignment past `DRAFT`, the *scope-defining* fields are immutable and are covered by an integrity digest: `id`, `schema_version`, `title`, `work_type`, `objective`, `owner`, `executor`, `workflow_mode`, `risk_flags`, `depends_on`, `context_refs`, `stopping_point`, `acceptance_criteria`, `evidence_required`, `next`, `origin_template`. Excluded (mutable by design): the entire `state` block, and the kernel-written annotations `classification_rule` and `rejection_reasons` — these carry no authority and no verification effect, and their tampering changes no outcome.
+
+**Digest binding.** When an assignment leaves `DRAFT` (the `classify_ok` transition, at which `workflow_mode` is finalized), the kernel computes a SHA-256 digest over the canonical serialization of the immutable field set and records it in that transition's audit entry `data`. Because the audit entry is hash-chained, the digest cannot subsequently be altered without breaking §8.6.1.
+
+**State/history consistency.** On every load (i.e. before every kernel operation, via the guard), for every assignment:
+
+1. `state.status` MUST equal the `to_status` of the last entry in `state.history`; a `DRAFT` assignment MUST have empty history. A mismatch is a hand-edit.
+2. For any assignment past `DRAFT`, the digest recomputed from the current immutable fields MUST equal the digest bound at `classify_ok`.
+
+Any violation raises `AuditChainBroken` and halts the kernel (INV-6). This closes direct edits to `status`, `workflow_mode`, `acceptance_criteria`, and every other immutable field. Legitimate scope change remains cancel-and-reissue (decision D-5).
+
 ---
 
 ## 7. Task State Machine and Workflow-Risk Classification
@@ -412,7 +427,41 @@ The verifier never consults conversation content, agent self-reports, or LLM jud
 
 ### 8.5 Audit history
 
-Append-only NDJSON, one entry per event, monthly rotation, SHA-256 hash chain (INV-5). `projectos audit verify` re-walks the chain. A broken chain halts the kernel and raises a founder escalation. Audit entries are committed to the repository like all state — GitHub history provides secondary tamper evidence.
+Append-only NDJSON, one entry per event, monthly rotation, SHA-256 hash chain (INV-5). `projectos audit verify` re-walks the chain. A broken chain halts the kernel and raises a founder escalation. Audit entries are committed to the repository like all state — GitHub history provides secondary tamper evidence. The precise guarantees of that chain, and its limits, are defined in §8.6.
+
+### 8.6 Audit authenticity and the v0.1 trust boundary (normative)
+
+The SHA-256 hash chain is an **unkeyed** integrity mechanism. Any process that can write `.projectos/` can also compute the next hash, so a correctly-linked *appended* entry is indistinguishable, to the chain alone, from a legitimately produced one. Earlier revisions of this section implied the chain detected deliberate append forgery. It does not. This subsection replaces that implication with a precise, layered statement of what v0.1 guarantees.
+
+**Four distinct properties — do not conflate them:**
+
+| Property | Question it answers | v0.1 mechanism | v0.1 status |
+|---|---|---|---|
+| **Corruption detection** | Was any *existing* entry altered, reordered, truncated, or deleted? | SHA-256 chain (INV-5) + `audit_ref` cross-check (§8.6.1) | **Guaranteed** — halts the kernel |
+| **State/history consistency** | Does each assignment file agree with the events the log records for it? | State/history + immutable-field digest check (§6.1) | **Guaranteed** — halts the kernel |
+| **Actor authorization** | Is a recorded approval/attestation attributed to an identity permitted to hold that role? | Read-time authority re-validation against the manifest (§8.6.2) | **Guaranteed** — an unauthorized entry grants nothing (fails closed) |
+| **Cryptographic authenticity** | Was this entry actually produced by the named identity, and not forged by someone impersonating it? | none (would require signing keys) | **Not guaranteed — deferred to v0.2** |
+
+**The v0.1 trust boundary is explicit.** A process that *both* (a) holds write access to `.projectos/` *and* (b) knows a manifest-authorized identity can append a hash-linked entry attributed to that identity which survives every v0.1 check. This is accepted, not fixed, in v0.1, for the same reason as Risk R-6: the threat model is a single founder on a local CLI, where such a process is running as the founder and can already alter any project state. v0.1 does **not** defend the audit log against its own privileged operator; it defends against accident, inconsistency, and *unauthorized-identity* forgery. Cryptographically-signed approval records (v0.2, Risk R-6/R-9) are the mechanism that closes authenticity.
+
+What the correction *does* achieve: it moves append forgery from "append any entry and it counts" to "impersonate a *specific, named, manifest-authorized* identity." The trivial forgery — an approval attributed to an identity that is not authorized for the role — is detected and grants nothing (§8.6.2).
+
+#### 8.6.1 Corruption detection (existing, retained)
+
+`verify_chain` re-walks the whole chain: sequence contiguity from 1, each entry's `prev_hash` equal to the predecessor's `hash`, and each entry's recomputed `hash` equal to its stored `hash`. Independently, every `state.history[].audit_ref` in every assignment must resolve to a present log entry, and every transition the log records for a still-present assignment must appear in that assignment's history (§ integrity cross-check, P1.1). Any failure raises `AuditChainBroken` and halts the kernel (INV-6). This catches editing, reordering, truncating (tail or whole-file), and deleting existing entries. It does **not** catch a correctly-linked append (see above).
+
+#### 8.6.2 Approval and attestation authority (normative)
+
+An `approval_recorded` or `attestation_recorded` entry grants authority **only if** all of the following hold; otherwise it grants nothing (fails closed) and is treated as absent for the purpose of reaching CLOSED:
+
+1. **Event/decision binding.** `approval_recorded` MUST carry `decision = approved`; `attestation_recorded` MUST carry `decision = attested`. Any other pairing grants nothing.
+2. **Identity authorization**, evaluated against the manifest at verification time, for the entry's `role` and recorded `actor`, relative to the target assignment `A`:
+   - `role = founder` → `actor` MUST equal `manifest.project.founder.id`.
+   - `role = owner` → `actor` MUST equal `A.owner` **or** `manifest.project.founder.id`.
+   - `role = reviewer` → `actor` MUST be listed in `manifest.owners` **and** MUST NOT equal `A.owner` (independence, §4.1).
+3. **Chain membership.** The entry MUST be part of a chain that passes §8.6.1.
+
+These are the same rules the kernel already enforces on the *write* path when recording an approval; §8.6.2 requires them to be re-enforced on the *read* path (verification and CLOSE evaluation), because a hand-appended entry never passed the write path. Because the checks require `manifest`, this validation MUST live in the application layer (verification/lifecycle), never in the infrastructure audit-log projection — the projection returns records; the kernel decides which ones count (§2.2 boundary rule).
 
 ---
 
@@ -592,9 +641,9 @@ Commands folded into the above rather than shipped separately: `start`/`resume` 
 1. **Secrets:** never in `.projectos/`, manifests, packs, assignments, or audit logs. Tokens come from environment/OS keychain. `projectos validate` scans state files for secret patterns and fails on detection.
 2. **Least privilege:** repo-scoped fine-grained token (§12); adapters get only their own config; packs get no credentials at all (they're data).
 3. **Fail closed everywhere:** invalid schema, broken audit chain, adapter errors, unknown transitions, ambiguous evidence ⇒ block + typed error + (where §9.1 applies) escalation. No silent defaults to success.
-4. **Identity and authority:** every approval records actor identity; founder-only actions validated against `manifest.founder.id`. v0.1 trusts local OS identity + git commit identity (single-founder threat model); cryptographic signing is a v0.2 hardening item (Risk R-6).
+4. **Identity and authority:** every approval records actor identity; founder-only actions validated against `manifest.founder.id`. Approval and attestation entries are authority-validated against manifest-authorized identities and roles on **both** the write and read paths (§8.6.2), so an entry attributed to an unauthorized identity grants nothing. v0.1 trusts local OS identity + git commit identity (single-founder threat model); it does **not** cryptographically prove that an entry attributed to an *authorized* identity was actually produced by it — impersonation by a process already holding repo + local-user credentials is an accepted v0.1 boundary, closed by signed records in v0.2 (Risk R-6/R-9, §8.6).
 5. **Injection surface:** agent completion reports are untrusted input — parsed against a strict schema, never executed, never allowed to trigger transitions beyond `submit`. Assignment briefings instruct agents that only repository evidence counts, removing incentive to game reports.
-6. **Audit integrity:** hash chain (INV-5) + repository history as second witness. Hand-edits to state files break validation and halt the kernel.
+6. **Audit and state integrity:** the unkeyed hash chain (INV-5) detects corruption, reordering, truncation, and deletion of existing entries (§8.6.1), but **not** a correctly-linked append (§8.6). Hand-edits to assignment scope, `state.status`, or workflow classification are detected via the immutable-field digest and state/history consistency checks (§6.1) and halt the kernel. Repository/GitHub history is a secondary witness, not a primary control.
 7. **Blast radius:** ProjectOS writes only under `.projectos/`; worst-case compromise of the orchestration token cannot merge, deploy, or alter project code.
 
 ---
@@ -610,7 +659,7 @@ v0.1 is done when, on one real repository:
 5. `depends_on` gating works: a DRAFT with an open dependency cannot reach READY.
 6. On `CLOSED`, `projectos next` deterministically generates the successor from the pack pipeline, or raises `NEXT_UNDETERMINED`.
 7. An escalation created without options is rejected; a valid one freezes the assignment until `resolve`, and resolution re-drives the state machine.
-8. `projectos audit verify` passes on an untouched log and fails (halting the kernel) after any manual edit to a state file.
+8. **Integrity halting and authority (revised, §6.1/§8.6).** On untouched state, every kernel operation and `projectos history --verify` succeed. The kernel **halts** (`AuditChainBroken`, exit 3) when any of these is present: (a) a corrupted, reordered, truncated, or deleted audit chain; (b) an assignment whose `state.status` disagrees with its `history`; (c) an assignment past `DRAFT` whose immutable-field digest no longer matches the digest bound at `classify_ok` — i.e. a hand-edit to `status`, `workflow_mode`, `acceptance_criteria`, or any immutable field. Separately, an `approval_recorded`/`attestation_recorded` entry whose actor is not manifest-authorized for its role, or whose event/decision pairing is inconsistent, **grants no authority** (fails closed) and cannot move an assignment to `CLOSED`. The chain does **not** detect a correctly-linked append that impersonates a manifest-authorized identity; that is the explicit v0.1 trust boundary (§8.6), tested as a documented non-guarantee, not as a passing forgery.
 9. A merge-requiring assignment cannot reach `CLOSED` without a recorded human approval; no kernel code path calls merge/deploy APIs.
 10. Cowork-routed (`architecture`) and Code-routed (`implementation`) assignments emit correct briefings, and code-touching evidence on an architecture assignment is rejected.
 
@@ -644,6 +693,7 @@ Dependency chain is strictly P1→P7. Estimated complexity: P2 and P3 are the he
 | R-4 | **Single-founder bottleneck** — GOVERNED queue stalls progress | Med | Med | §9.3 decision-ready rule; only §9.1 triggers escalate; everything else stays at owner level |
 | R-5 | **Adapter API instability** (GitHub API changes) | Low | Med | Narrow §11 interface; capability flags; local-git fallback keeps the kernel operable |
 | R-6 | **Identity spoofing** in approvals (v0.1 trusts local identity) | Low | High-later | Acceptable for single-founder v0.1; signed approvals scheduled v0.2; risk recorded here so it is a conscious acceptance |
+| R-9 | **Audit append forgery** — a process with `.projectos/` write access appends a correctly hash-linked entry impersonating a manifest-authorized identity | Low | High-later | v0.1 boundary (§8.6): unkeyed chain cannot detect it. Mitigated in v0.1 to *unauthorized-identity* forgery only (read-time authority validation, §8.6.2). Authenticity against authorized-identity impersonation deferred to v0.2 signed approval records. Consciously accepted for the single-founder local model, where the forging process runs as the founder |
 | R-7 | **Pack sprawl / domain leakage into core** under delivery pressure | Med | High | §2.2 boundary rule + GOVERNED classification on any `src/kernel/**` change (protected path) |
 | R-8 | **`human_attestation` becomes a rubber stamp** for non-repo domains (legal, agriculture) | Med | Med | Attestations are audit-logged with actor identity; pack authors must justify each attestation-based criterion; future packs can bind external evidence sources via adapters |
 
@@ -659,6 +709,7 @@ Dependency chain is strictly P1→P7. Estimated complexity: P2 and P3 are the he
 | D-4 | Verification is mechanical rules, never LLM judgment | Determinism, auditability, fail-closed semantics are impossible with judgment-based verification |
 | D-5 | Scope changes require cancel-and-reissue, not editing | Immutable assignments keep audit trail and acceptance criteria honest |
 | D-6 | v0.1 targets exactly one repository and one project | Matches assignment mandate; multi-project orchestration deferred until the single-project loop is proven |
+| D-7 | Audit authenticity is layered: v0.1 provides corruption detection, state/history consistency, and read-time authority validation; cryptographic authenticity (signed records) is deferred to v0.2 (§8.6, R-9) | An unkeyed chain cannot prevent a privileged operator forging an append. Honesty about the boundary beats a false guarantee. The single-founder local model makes authorized-identity impersonation an acceptable v0.1 residual; the trivial unauthorized-identity forgery is closed now |
 
 ## 19. Unresolved Founder Decisions (non-blocking — defaults stand unless overridden)
 
@@ -680,3 +731,45 @@ All 15 mandated definition areas are specified; all required v0.1 capabilities (
 **READY FOR CLAUDE CODE**
 
 *Stopping point reached per assignment: the Claude Code implementation assignment is intentionally not generated here.*
+
+---
+
+## 21. Appendix — P1.5 Implementation Contract (Blockers 1–5)
+
+Normative directives for the Claude Code assignment that fixes PR #4's five verified blockers. Each item lists the required code behaviour and the regression tests that must accompany it. **No further architecture decision is required for any blocker** — §6.1 and §8.6 above resolve the only open design question (append forgery). Every regression test must be demonstrated to FAIL against commit `2a67240` before the fix and PASS after (the established defect-proving discipline). No existing test may be weakened.
+
+### 21.1 Blocker 1 — status forgery (architecture: settled, §6.1)
+
+**Required behaviour.** The integrity check (application layer, run by the guard before every operation) MUST reject any assignment whose `state.status` ≠ `to_status` of the last `state.history` entry, and any `DRAFT` assignment with non-empty history. Failure raises `AuditChainBroken` (exit 3). Placement: application layer (it needs no manifest but belongs with the existing `verify_state`), never the infrastructure projection.
+
+**Regression tests.** (a) drive an assignment to `ACTIVE`, hand-edit `status: closed`, assert `history --verify` and every write operation halt; (b) hand-edit a DRAFT to carry fabricated history, assert halt; (c) an untouched full lifecycle still verifies.
+
+### 21.2 Blocker 2 — mutable scope/classification after DRAFT (architecture: settled, §6.1)
+
+**Required behaviour.** At the `classify_ok` transition, compute a SHA-256 digest over the canonical serialization of the immutable field set (§6.1) and store it in that audit entry's `data`. On every load, for any assignment past `DRAFT`, recompute and compare; mismatch raises `AuditChainBroken`. The digest MUST be computed from the same canonical form the serializer already uses, so re-saving an unchanged assignment does not spuriously fail.
+
+**Regression tests.** (a) swap an `acceptance_criteria` rule after classify, assert halt; (b) change `workflow_mode` reviewed→fast after classify, assert halt; (c) editing `rejection_reasons` or `classification_rule` (excluded fields) does NOT halt; (d) the normal REJECTED→resume→verify cycle, which legitimately rewrites `state` and `rejection_reasons`, still verifies.
+
+### 21.3 Blocker 3 — append forgery (architecture: settled, §8.6.2)
+
+**Required behaviour.** Approval/attestation authority is re-validated on the READ path, in the application layer, against the manifest, per §8.6.2: event/decision binding, and role→actor authorization (founder = founder.id; owner = assignment owner or founder; reviewer ∈ owners and ≠ assignment owner). An entry failing any check grants nothing. The infrastructure audit-log projection MUST NOT perform this check (no manifest there); it returns records, the verification engine filters them. This must not regress the P1.1 rule that a missing/non-canonical `decision` grants nothing.
+
+**Regression tests.** (a) append a chain-valid `approval_recorded` with `actor` not in `manifest.owners`; assert it grants nothing and the assignment cannot reach `CLOSED`; (b) append a chain-valid `attestation_recorded` carrying `decision: approved`; assert it does not satisfy an `approval_recorded` criterion; (c) a legitimate approval by an authorized identity still closes; (d) **documented non-guarantee test**: an append impersonating a genuinely manifest-authorized identity IS accepted — assert this explicitly as the v0.1 boundary (§8.6), with a comment citing R-9, so the limit is visible and cannot silently regress into a claimed guarantee.
+
+### 21.4 Blocker 4 — bundled-pack circular approval (classification: implementation defect)
+
+This is an **implementation defect in the bundled `software-core` pack templates, not a design ambiguity.** Acceptance criteria are verified from repository evidence (§8.3); reviewer/founder sign-off is the separate CLOSE gate driven by workflow mode (§7.3). The `implement-kernel` and `harden-and-document` templates wrongly encode `approval_recorded` as an *acceptance criterion*, which cannot be satisfied because approval requires `VERIFIED` first — a deadlock reproduced at A-0002 in every scaffolded project.
+
+**Required behaviour.** Bundled templates MUST express acceptance criteria over repository facts (e.g. `commit_exists`, `file_exists`, `ci_passed`) and rely on the assignment's workflow mode for reviewer/founder approval at CLOSE. `approval_recorded` remains a valid rule type for genuinely repository-external evidence, but MUST NOT be the criterion that gates `VERIFIED` in a generated pipeline template.
+
+**Regression tests.** (a) a full `init`→(A-0001)→`next`→(A-0002)→`verify`→`complete` cycle reaches `CLOSED` on A-0002 using only committed evidence plus the mode-appropriate approval, with no hand-edit; (b) assert no bundled template uses `approval_recorded` as an acceptance-criterion rule.
+
+### 21.5 Blocker 5 — untested audit guarantees (no architecture)
+
+**Required behaviour.** The audit and authority guarantees must be individually tested such that removing any single production check fails at least one test.
+
+**Regression tests.** (a) add `match=` (specific substrings) to the three `test_audit.py` tampering tests so each pins its own failure mode; (b) add tests that independently remove the `prev_hash`-link check and the sequence-contiguity check and assert each removal is caught; (c) add tests covering the eight mutation survivors the P1.4 review identified: `tests_passed` fail-open, `approval_recorded` decision widening, empty-criteria pass (INV-3), the two `verify_chain` checks, attestation-counts-as-approval, capability-default `False`→`True`, and the approval-projection role filter. Each test must fail against the corresponding one-line production mutation and pass on the real code.
+
+### 21.6 Blockers requiring no further architecture decision
+
+Confirmed: **Blockers 1, 2, 4, and 5 need no architecture decision.** 1 and 2 are settled by §6.1 (consistency + digest, no new mechanism beyond the existing chain). 4 is a pack-authoring correction. 5 is test work. Blocker 3 is the only one that touched the trust model, and it is settled by §8.6 (read-time authority validation + an explicit, tested v0.1 boundary). Claude Code may implement all five directly against this contract.
