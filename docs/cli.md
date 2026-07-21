@@ -79,6 +79,40 @@ Each pack skeleton contains `README.md`, `project_rules.yaml`,
 existing file — a second run is a visible no-op (`created: 0`). `--force` overwrites
 the generated starter files. Always exits `0`. Writes only under `PATH`; no network.
 
+### Workspace manifest schemas
+
+The workspace is read back into typed values by the Workspace Runtime loader
+(`infrastructure/workspace_manifest.py`), validated against bundled JSON Schemas.
+Every field beyond the required ones is optional, so a workspace created by an
+earlier `workspace init` loads unchanged.
+
+`Workspace.yaml` — `workspace_manifest.schema.json`:
+
+| Field | Required | Meaning |
+|---|---|---|
+| `schema_version` | yes | Must be `1`. |
+| `workspace.name` | yes | Workspace name. |
+| `projectos` | no | Path to the workspace ProjectOS directory. |
+| `shared.{packs,templates,policies,prompts,knowledge}` | no | Paths to shared asset directories. |
+| `packs[]` | no | Available packs, each `{name, path}`. |
+| `projects[]` | no | Registered projects, each `{name, path}`. |
+
+`Projects/<name>/project.yaml` — `project_manifest.schema.json`:
+
+| Field | Required | Meaning |
+|---|---|---|
+| `schema_version` | yes | Must be `1`. |
+| `project.id` | yes | Kebab-case project id. |
+| `project.name` | yes | Project name. |
+| `project.description` | no | One-line description. |
+| `pack` | no | The pack this project uses. |
+| `repository` | no | The project's repository — `{adapter, remote, default_branch, path}`, all optional. A repository is a property of the project; the runtime resolves the workspace, then its projects, then each project's repository. |
+
+Loading fails closed: a manifest that violates its schema, is not a YAML mapping,
+or breaks a cross-field rule (a duplicate project or pack name) raises a validation
+error rather than being partially accepted. Loading is read-only — it never writes,
+activates, or touches the ProjectOS kernel.
+
 ## `projectos validate`
 
 Check the manifest, packs, version compatibility, and assignment state. **Changes
