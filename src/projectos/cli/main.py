@@ -91,6 +91,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="Overwrite existing starter files (default: preserve them).",
     )
 
+    ws_add = workspace_subs.add_parser(
+        "add-project", help="Register a project in the workspace (idempotent)."
+    )
+    ws_add.add_argument("name", help="Project name.")
+    ws_add.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
+    ws_add.add_argument("--pack", default="rapid-build", help="Pack backing the project.")
+    ws_add.add_argument("--project-id", default=None, help="Kebab-case id (default: from name).")
+    ws_add.add_argument("--description", default="", help="One-line project description.")
+    ws_add.add_argument(
+        "--repo", default=None, help="Path to the project's repository (optional)."
+    )
+    ws_add.add_argument("--force", action="store_true", help="Overwrite an existing project.yaml.")
+
+    ws_initp = workspace_subs.add_parser(
+        "init-project",
+        help="Scaffold a registered project's ProjectOS kernel from its pack (idempotent).",
+    )
+    ws_initp.add_argument("name", help="Registered project name.")
+    ws_initp.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
+    ws_initp.add_argument("--founder-id", required=True, help="Founder identity for the project.")
+    ws_initp.add_argument("--founder-name", required=True, help="Founder display name.")
+    ws_initp.add_argument("--force", action="store_true", help="Re-initialise an existing kernel.")
+
+    ws_list = workspace_subs.add_parser("list", help="List registered projects and status.")
+    ws_list.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
+
     # -- validate --------------------------------------------------------------
     subparsers.add_parser(
         "validate", help="Validate manifest, packs, and state. Makes no changes."

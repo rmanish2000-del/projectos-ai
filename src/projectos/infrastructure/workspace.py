@@ -53,6 +53,59 @@ SHARED_DIRS: tuple[str, ...] = (
 
 EXAMPLE_PROJECT = "ExampleProject"
 
+#: The one pack that ships loadable (a valid pack.yaml + templates), so a project
+#: can be created from it. `rapid-build` is the fast, minimal domain: define a task,
+#: then build it, both FAST (owner closes).
+RAPID_BUILD = "rapid-build"
+
+RAPID_BUILD_PACK_YAML = """# rapid-build pack — declarative, loadable by the ProjectOS kernel.
+schema_version: 1
+name: rapid-build
+version: 0.1.0
+domain: generic
+requires_projectos: ">=0.1.0,<0.2.0"
+pipeline:
+  - phase: foundation
+    templates:
+      - define-task
+      - build-task
+"""
+
+RAPID_BUILD_TEMPLATES: dict[str, str] = {
+    "define-task": """# rapid-build assignment template — kernel issues id, state, origin.
+title: Define the task
+work_type: specification
+executor: cowork
+objective: >
+  State the task, its scope, and its machine-verifiable acceptance criteria.
+stopping_point: Stop when the task definition is committed. Do not build yet.
+acceptance_criteria:
+  - id: AC-1
+    statement: A task definition exists at docs/TASK.md.
+    verify:
+      type: file_exists
+      path: docs/TASK.md
+evidence_required:
+  - commit
+""",
+    "build-task": """# rapid-build assignment template — kernel issues id, state, origin.
+title: Build the defined task
+work_type: implementation
+executor: code
+objective: >
+  Implement the task defined by the preceding assignment, and commit it.
+stopping_point: Stop after the change is committed.
+acceptance_criteria:
+  - id: AC-1
+    statement: The build is committed.
+    verify:
+      type: commit_exists
+      message_pattern: "(?i)build|implement"
+evidence_required:
+  - commit
+""",
+}
+
 #: Marker file so an otherwise-empty directory is tracked by git and survives a
 #: clone. Named `.gitkeep` by convention.
 GITKEEP = ".gitkeep"
@@ -184,6 +237,14 @@ def _write_pack_skeleton(writer: _Writer, pack_dir: Path, name: str) -> None:
     writer.file(pack_dir / "deployment.md", _pack_deployment(name))
     writer.dir(pack_dir / "templates")
     writer.file(pack_dir / "templates" / GITKEEP, "")
+
+    # rapid-build ships as a *loadable* ProjectOS pack — a valid pack.yaml and
+    # bindable templates — so a project can be created from it. The other packs
+    # remain skeletons until a pack author fills them in.
+    if name == RAPID_BUILD:
+        writer.file(pack_dir / "pack.yaml", RAPID_BUILD_PACK_YAML)
+        for template_name, body in RAPID_BUILD_TEMPLATES.items():
+            writer.file(pack_dir / "templates" / f"{template_name}.yaml", body)
 
 
 def _write_example_project(writer: _Writer, layout: WorkspaceLayout) -> None:

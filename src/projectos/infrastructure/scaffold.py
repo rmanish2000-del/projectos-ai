@@ -130,6 +130,8 @@ def build_manifest(
     github_owner: str | None = None,
     github_repo: str | None = None,
     extra_owners: tuple[Identity, ...] = (),
+    pack: str = DEFAULT_PACK,
+    pack_constraint: str = ">=0.1.0 <0.2.0",
 ) -> Manifest:
     """Build the project manifest.
 
@@ -137,6 +139,9 @@ def build_manifest(
     founder — the pool from which reviewers are drawn (spec 8.6.2). The `init`
     command scaffolds a single-founder manifest; a project adds owners by editing
     `manifest.yaml`.
+
+    `pack` names the project's pack (default the bundled `software-core`); the
+    workspace bridge passes a workspace pack such as `rapid-build` here.
     """
     founder = Identity(id=founder_id, name=founder_name)
     owners = (founder, *(o for o in extra_owners if o.id != founder.id))
@@ -147,7 +152,7 @@ def build_manifest(
         description=description,
         founder=founder,
         owners=owners,
-        packs=(PackRequirement(DEFAULT_PACK, ">=0.1.0 <0.2.0"),),
+        packs=(PackRequirement(pack, pack_constraint),),
         repository=RepositoryConfig(
             adapter=adapter,
             default_branch=default_branch,

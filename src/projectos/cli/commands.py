@@ -84,6 +84,19 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 
 def cmd_workspace(args: argparse.Namespace) -> int:
+    """Workspace tooling. Dispatches on the workspace subcommand."""
+    if args.workspace_command == "init":
+        return _cmd_workspace_init(args)
+    if args.workspace_command == "add-project":
+        return _cmd_workspace_add_project(args)
+    if args.workspace_command == "init-project":
+        return _cmd_workspace_init_project(args)
+    if args.workspace_command == "list":
+        return _cmd_workspace_list(args)
+    raise ValidationError(f"Unknown workspace command {args.workspace_command!r}")
+
+
+def _cmd_workspace_init(args: argparse.Namespace) -> int:
     """`workspace init <path>` — bootstrap a local-first workspace (P3).
 
     Idempotent: creates whatever is missing and preserves existing files, so a
@@ -110,6 +123,68 @@ def cmd_workspace(args: argparse.Namespace) -> int:
         )
     print()
     print(f"  Workspace manifest: {result.root / 'Workspace.yaml'}")
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_add_project(args: argparse.Namespace) -> int:
+    """`workspace add-project <name>` — register a project (P4.2). Idempotent."""
+    from projectos.infrastructure.workspace_bridge import add_project
+
+    project_dir = add_project(
+        Path(args.workspace),
+        name=args.name,
+        pack=args.pack,
+        project_id=args.project_id,
+        description=args.description,
+        repository_path=args.repo,
+        force=args.force,
+    )
+    print(formatting.heading(f"PROJECT REGISTERED  {args.name}"))
+    print(f"  pack        {args.pack}")
+    if args.repo:
+        print(f"  repository  {Path(args.repo).resolve()}")
+    print(f"  manifest    {project_dir / 'project.yaml'}")
+    print()
+    print(f"  Next: projectos workspace init-project {args.name} "
+          "--founder-id <id> --founder-name <name>")
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_init_project(args: argparse.Namespace) -> int:
+    """`workspace init-project <name>` — scaffold the project's kernel (P4.2)."""
+    from projectos.infrastructure.workspace_bridge import init_project_kernel
+
+    repo = init_project_kernel(
+        Path(args.workspace),
+        name=args.name,
+        founder_id=args.founder_id,
+        founder_name=args.founder_name,
+        force=args.force,
+    )
+    print(formatting.heading(f"PROJECT KERNEL READY  {args.name}"))
+    print(f"  repository  {repo}")
+    print(f"  state       {repo / '.projectos'}")
+    print()
+    print(f"  Next: projectos --repo {repo} next")
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_list(args: argparse.Namespace) -> int:
+    """`workspace list` — registered projects and their status (P4.2). Read-only."""
+    from projectos.infrastructure.workspace_bridge import list_projects
+
+    statuses = list_projects(Path(args.workspace))
+    print(formatting.heading(f"WORKSPACE PROJECTS  ({len(statuses)})"))
+    if not statuses:
+        print("  none registered — `projectos workspace add-project <name>`")
+        return int(ExitCode.OK)
+    for status in statuses:
+        active = status.active_assignment or "—"
+        state = "initialised" if status.initialised else "not initialised"
+        print(f"  {status.name}  ({status.project_id})")
+        print(f"    pack        {status.pack or '—'}")
+        print(f"    repository  {status.repository}")
+        print(f"    kernel      {state}    active assignment: {active}")
     return int(ExitCode.OK)
 
 
