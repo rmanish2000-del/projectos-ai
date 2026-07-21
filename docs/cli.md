@@ -45,6 +45,40 @@ audit chain cannot be orphaned.
 The `github` adapter is not implemented in this phase and fails closed on every
 evidence query. Use `local_git` unless you are on a later phase.
 
+## `projectos workspace init`
+
+Bootstrap a local-first **workspace** — the directory that holds many ProjectOS
+projects and the shared assets they draw on. This is a layer above the per-project
+`.projectos/` that `init` scaffolds.
+
+```bash
+projectos workspace init [PATH] [--name NAME] [--force]
+```
+
+`PATH` is the workspace root (default `./Workspace`), created if missing. `--name`
+sets the workspace name (default: the directory name).
+
+The generator lays down:
+
+```
+<PATH>/
+  Workspace.yaml            registers projects and shared pack locations
+  ProjectOS/
+  Shared/
+    Packs/                  rapid-build, software, trading, renewable,
+                            legal, website, documentation
+    Templates/  Policies/  Prompts/  Knowledge/
+  Projects/
+    ExampleProject/project.yaml
+```
+
+Each pack skeleton contains `README.md`, `project_rules.yaml`,
+`assignment_rules.md`, `quality_gates.yaml`, `deployment.md`, and `templates/`.
+
+**Idempotent.** Running it again creates only what is missing and preserves every
+existing file — a second run is a visible no-op (`created: 0`). `--force` overwrites
+the generated starter files. Always exits `0`. Writes only under `PATH`; no network.
+
 ## `projectos validate`
 
 Check the manifest, packs, version compatibility, and assignment state. **Changes
