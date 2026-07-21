@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://projectos.ai/schemas/v1/audit_entry.schema.json",
+  "title": "ProjectOS audit log entry (one NDJSON line)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sequence", "timestamp", "event", "actor", "prev_hash", "hash"],
+  "properties": {
+    "sequence": { "type": "integer", "minimum": 1 },
+    "timestamp": { "type": "string" },
+    "event": { "type": "string", "minLength": 1 },
+    "actor": { "type": "string", "minLength": 1 },
+    "assignment_id": { "type": ["string", "null"] },
+    "escalation_id": { "type": ["string", "null"] },
+    "from_status": { "type": ["string", "null"] },
+    "to_status": { "type": ["string", "null"] },
+    "reason": { "type": ["string", "null"] },
+    "evidence_refs": { "type": "array", "items": { "type": "string" } },
+    "data": { "type": "object" },
+    "prev_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

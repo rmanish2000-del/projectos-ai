@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://projectos.ai/schemas/v1/manifest.schema.json",
+  "title": "ProjectOS project manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "project", "owners", "repository"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "founder"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "founder": { "$ref": "#/$defs/identity" }
+      }
+    },
+    "owners": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/identity" }
+    },
+    "packs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "version": { "type": "string" }
+        }
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter"],
+      "properties": {
+        "adapter": { "enum": ["github", "local_git"] },
+        "config": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "remote": { "type": "string" },
+            "default_branch": { "type": "string" },
+            "github": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["owner", "repo"],
+              "properties": {
+                "owner": { "type": "string", "minLength": 1 },
+                "repo": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "agents": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type"],
+        "properties": { "type": { "enum": ["cowork", "code", "human"] } }
+      }
+    },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default_mode": { "enum": ["fast", "reviewed", "governed"] },
+        "governed_triggers": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "approvals": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "merge": { "const": "manual" },
+        "deploy": { "const": "manual" }
+      }
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "hash_algorithm": { "const": "sha256" } }
+    }
+  },
+  "$defs": {
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

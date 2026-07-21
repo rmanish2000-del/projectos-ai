@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://projectos.ai/schemas/v1/escalation.schema.json",
+  "title": "ProjectOS founder-decision escalation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "trigger", "summary", "options", "state"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "type": "string", "pattern": "^E-\\d{4}$" },
+    "assignment_id": { "type": ["string", "null"], "pattern": "^A-\\d{4}$" },
+    "trigger": {
+      "enum": [
+        "founder_decision", "blocker", "security_risk",
+        "legal_risk", "architecture_conflict", "next_undetermined"
+      ]
+    },
+    "summary": { "type": "string", "minLength": 1 },
+    "options": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description", "consequence"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "consequence": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "recommendation": { "type": ["string", "null"] },
+    "created_at": { "type": "string" },
+    "state": { "enum": ["open", "resolved"] },
+    "resolution": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["decision", "decided_by", "decided_at", "outcome"],
+      "properties": {
+        "decision": { "type": ["string", "null"] },
+        "decided_by": { "type": ["string", "null"] },
+        "decided_at": { "type": ["string", "null"] },
+        "outcome": { "enum": ["proceed", "cancel", "rescope"] }
+      }
+    }
+  }
+}
