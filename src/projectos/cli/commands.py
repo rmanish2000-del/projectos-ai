@@ -12,6 +12,7 @@ from pathlib import Path
 
 from projectos.application import validation_service
 from projectos.cli import formatting
+from projectos.domain.assignment import Assignment
 from projectos.domain.audit import AuditEntry
 from projectos.domain.enums import (
     EscalationTrigger,
@@ -209,13 +210,23 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def cmd_next(args: argparse.Namespace) -> int:
+    """Deterministically perform the one applicable next action (spec P2 CLI contract).
+
+    Precedence: an active assignment blocks (INV-1); otherwise the kernel generates
+    or resumes exactly one assignment, and the CLI activates a READY one. A founder
+    escalation returns exit 3.
+    """
     kernel = _kernel(args)
     lifecycle = kernel.lifecycle
+
+    def show(assignment: Assignment, *, source: str) -> None:
+        report = lifecycle.graph().evaluate(assignment)
+        print(formatting.next_summary(assignment, source=source, dependencies=report.describe()))
 
     active = lifecycle.active()
     if active is not None:
         print(formatting.heading("ALREADY ACTIVE"))
-        print(formatting.assignment_summary(active))
+        show(active, source="existing (active)")
         print()
         print("  INV-1 permits one active assignment. Finish, block, or cancel it first.")
         return int(ExitCode.OK)
@@ -229,11 +240,11 @@ def cmd_next(args: argparse.Namespace) -> int:
 
     assert result.assignment is not None
     candidate = result.assignment
+    source = result.decision.source
 
     if args.dry_run:
         print(formatting.heading("NEXT (dry run)"))
-        print(formatting.assignment_summary(candidate))
-        print(f"    Source    {result.decision.source}")
+        show(candidate, source=source)
         return int(ExitCode.OK)
 
     if candidate.status is Status.REJECTED:
@@ -241,14 +252,14 @@ def cmd_next(args: argparse.Namespace) -> int:
         # rejection reasons into the fresh briefing (spec 7.2, REJECTED -> ACTIVE).
         resumed, briefing = lifecycle.resume(candidate.id)
         print(formatting.heading("RESUMED AFTER REJECTION"))
-        print(formatting.assignment_summary(resumed))
+        show(resumed, source=source)
         print()
         print(formatting.briefing_block(briefing.render()))
         return int(ExitCode.OK)
 
     if candidate.status is not Status.READY:
         print(formatting.heading("NEXT ASSIGNMENT NOT YET READY"))
-        print(formatting.assignment_summary(candidate))
+        show(candidate, source=source)
         if candidate.status is Status.DRAFT:
             print()
             print("  Classification is deferred; see `projectos history` for the reason.")
@@ -256,8 +267,7 @@ def cmd_next(args: argparse.Namespace) -> int:
 
     started, briefing = lifecycle.start(candidate.id)
     print(formatting.heading("STARTED"))
-    print(formatting.assignment_summary(started))
-    print(f"    Source    {result.decision.source}")
+    show(started, source=source)
     print()
     print(formatting.briefing_block(briefing.render()))
     return int(ExitCode.OK)
