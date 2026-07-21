@@ -54,9 +54,17 @@ def add_project(
     project_id: str | None = None,
     description: str = "",
     repository_path: str | None = None,
+    repository_remote: str | None = None,
+    repository_branch: str | None = None,
     force: bool = False,
 ) -> Path:
     """Register a project in the workspace and write its `project.yaml`.
+
+    A project's repository may be recorded as a local `repository_path` (which the
+    bridge also uses to host the kernel), or by `repository_remote` / `repository_branch`
+    metadata for a repository that lives elsewhere and is not hosted by the bridge —
+    the form the SensexPilot dogfood needs, so an external repository can be
+    referenced without the kernel writing into it.
 
     Idempotent: re-registering the same name with the same details is a no-op.
     Registering a different project.yaml over an existing one requires `force`.
@@ -94,8 +102,9 @@ def add_project(
         "project": {"id": project_id, "name": name, "description": description},
         "pack": pack,
     }
-    if repository_path is not None:
-        body["repository"] = {"adapter": "local_git", "path": repository_path}
+    repository = _repository_block(repository_path, repository_remote, repository_branch)
+    if repository:
+        body["repository"] = repository
 
     if project_yaml.exists() and not force:
         # Idempotent: leave an existing manifest untouched.
@@ -269,6 +278,26 @@ def _default_branch(project: ProjectManifest) -> str:
     if project.repository is not None and project.repository.default_branch:
         return project.repository.default_branch
     return "main"
+
+
+def _repository_block(
+    path: str | None, remote: str | None, branch: str | None
+) -> dict[str, str]:
+    """Assemble a project.yaml `repository` block from whichever fields are given.
+
+    Returns an empty dict when no repository detail is supplied, so the field is
+    omitted entirely (it is optional, spec P4.1).
+    """
+    block: dict[str, str] = {}
+    if path is not None:
+        block["path"] = path
+    if remote is not None:
+        block["remote"] = remote
+    if branch is not None:
+        block["default_branch"] = branch
+    if block:
+        block["adapter"] = "local_git"
+    return block
 
 
 def _slug(name: str) -> str:

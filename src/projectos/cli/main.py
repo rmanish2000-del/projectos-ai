@@ -100,8 +100,14 @@ def build_parser() -> argparse.ArgumentParser:
     ws_add.add_argument("--project-id", default=None, help="Kebab-case id (default: from name).")
     ws_add.add_argument("--description", default="", help="One-line project description.")
     ws_add.add_argument(
-        "--repo", default=None, help="Path to the project's repository (optional)."
+        "--repo", default=None, help="Local path to the project's repository (optional)."
     )
+    ws_add.add_argument(
+        "--repo-remote",
+        default=None,
+        help="Repository remote URL, for a repository hosted elsewhere (optional).",
+    )
+    ws_add.add_argument("--repo-branch", default=None, help="Repository default branch (optional).")
     ws_add.add_argument("--force", action="store_true", help="Overwrite an existing project.yaml.")
 
     ws_initp = workspace_subs.add_parser(
