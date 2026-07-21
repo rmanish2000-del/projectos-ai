@@ -132,6 +132,16 @@ class ResolvedProject:
     manifest: ProjectManifest
 
     @property
+    def name(self) -> str:
+        """The workspace registration name (the key in Workspace.yaml projects)."""
+        return self.ref.name
+
+    @property
+    def project_id(self) -> str:
+        """The project's own identifier, declared in its project.yaml."""
+        return self.manifest.id
+
+    @property
     def repository(self) -> ProjectRepository | None:
         """Repositories are resolved through projects (P4 resolution order)."""
         return self.manifest.repository
@@ -139,11 +149,34 @@ class ResolvedProject:
 
 @dataclass(frozen=True, slots=True)
 class Workspace:
-    """A workspace manifest with its registered projects resolved."""
+    """A workspace manifest with its registered projects resolved.
+
+    Construction rejects duplicate project identifiers so that lookup by identifier
+    is unambiguous — two projects declaring the same `project.id` would make
+    `by_id` non-deterministic, which is a fail-closed registration error.
+    """
 
     root: Path
     manifest: WorkspaceManifest
     projects: tuple[ResolvedProject, ...] = ()
+
+    def __post_init__(self) -> None:
+        seen: set[str] = set()
+        for project in self.projects:
+            if project.project_id in seen:
+                raise ValidationError(
+                    f"Duplicate project identifier {project.project_id!r} in the workspace",
+                    detail="Each registered project must declare a unique project.id.",
+                )
+            seen.add(project.project_id)
+
+    def by_id(self, project_id: str) -> ResolvedProject | None:
+        """Look up a resolved project by its `project.id` identifier."""
+        return next((p for p in self.projects if p.project_id == project_id), None)
+
+    def by_name(self, name: str) -> ResolvedProject | None:
+        """Look up a resolved project by its workspace registration name."""
+        return next((p for p in self.projects if p.name == name), None)
 
 
 # -- loaders -----------------------------------------------------------------
