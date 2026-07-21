@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://projectos.ai/schemas/v1/workspace_manifest.schema.json",
+  "title": "ProjectOS workspace manifest (Workspace.yaml)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "workspace"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "projectos": { "type": "string", "minLength": 1 },
+    "shared": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "packs": { "type": "string", "minLength": 1 },
+        "templates": { "type": "string", "minLength": 1 },
+        "policies": { "type": "string", "minLength": 1 },
+        "prompts": { "type": "string", "minLength": 1 },
+        "knowledge": { "type": "string", "minLength": 1 }
+      }
+    },
+    "packs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "path"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "path"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
