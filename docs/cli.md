@@ -86,12 +86,15 @@ workspace.
 
 ```bash
 projectos workspace add-project <name> [--workspace PATH] [--pack rapid-build] \
-  [--project-id ID] [--description "..."] [--repo PATH] [--force]
+  [--project-id ID] [--description "..."] \
+  [--repo PATH | --repo-remote URL [--repo-branch BRANCH]] [--force]
 ```
 
 Appends the project to `Workspace.yaml` and writes `Projects/<name>/project.yaml`.
-`--repo` records the project's repository path (optional). `--pack` names the pack
-backing the project (default `rapid-build`, the one pack that ships loadable).
+The project's repository is recorded either as a local `--repo` path (which the
+bridge also hosts the kernel in) or as `--repo-remote` metadata for a repository
+that lives elsewhere and is not written into. `--pack` names the pack backing the
+project (default `rapid-build`, the one pack that ships loadable).
 
 ## `projectos workspace init-project`
 

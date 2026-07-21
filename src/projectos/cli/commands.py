@@ -137,12 +137,16 @@ def _cmd_workspace_add_project(args: argparse.Namespace) -> int:
         project_id=args.project_id,
         description=args.description,
         repository_path=args.repo,
+        repository_remote=args.repo_remote,
+        repository_branch=args.repo_branch,
         force=args.force,
     )
     print(formatting.heading(f"PROJECT REGISTERED  {args.name}"))
     print(f"  pack        {args.pack}")
     if args.repo:
         print(f"  repository  {Path(args.repo).resolve()}")
+    if args.repo_remote:
+        print(f"  remote      {args.repo_remote}")
     print(f"  manifest    {project_dir / 'project.yaml'}")
     print()
     print(f"  Next: projectos workspace init-project {args.name} "
