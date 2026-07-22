@@ -173,7 +173,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ws_assignment.add_argument(
         "action",
-        choices=["show", "block", "unblock"],
+        choices=["show", "verify", "block", "unblock"],
         help="Lifecycle action to perform on the selected assignment.",
     )
     ws_assignment.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
@@ -189,6 +189,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ws_assignment.add_argument(
         "--reason", default="", help="Reason for `block` (required for the block action)."
+    )
+    ws_assignment.add_argument(
+        "--report",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help="Completion report (YAML) to ingest before `verify` (same as `verify --report`).",
     )
 
     ws_handoff = workspace_subs.add_parser(

@@ -270,33 +270,38 @@ orchestration: each action delegates to the exact canonical path the per-project
 commands use, so every guard is enforced unchanged.
 
 ```bash
-projectos workspace assignment <show|block|unblock> \
-  --project ID|NAME [--assignment ID] [--reason TEXT]
+projectos workspace assignment <show|verify|block|unblock> \
+  --project ID|NAME [--assignment ID] [--reason TEXT] [--report FILE]
 ```
 
-Actions (the smallest coherent set for managing execution after `workspace next`):
+Actions (managing execution after `workspace next`):
 
 | Action | Delegates to | Effect |
 |---|---|---|
 | `show` | `assignments.get` (+ `approval_status`) | Read-only summary of the assignment |
+| `verify` | `lifecycle.verify(id, claim)` | Verify against repository evidence → `VERIFIED`, or `REJECTED` (exit `1`) |
 | `block` | `lifecycle.block(id, reason)` | → `BLOCKED` (requires `--reason`) |
 | `unblock` | `lifecycle.unblock(id)` | `BLOCKED` → `READY` once dependencies are closed |
 
 `--project` is **required** (by `project.id` or registration name; no auto-selection).
 `--assignment` defaults to the assignment currently in flight, matching the
-per-project convention. Output reports the workspace, project, assignment, action,
-and resulting status. `start`/`resume` are intentionally not here — they are reached
-through `projectos workspace next`; `verify`, `complete`/`approve`/`attest`, and the
-founder actions are excluded because they carry evidence or authority contracts that
-would widen this command.
+per-project convention. `verify` accepts the same optional `--report FILE` (a YAML
+completion report) as `projectos verify`, and delegates to the exact same
+evidence-verification flow (`run_verify` → `lifecycle.verify`); it neither evaluates
+evidence nor decides a verdict, and prints the canonical verification report. Output
+reports the workspace, project, assignment, action, and resulting status.
+`start`/`resume` are reached through `projectos workspace next`;
+`complete`/`approve`/`attest` and the founder actions are excluded because they carry
+authority contracts that would widen this command.
 
 Every guard is inherited unchanged from the lifecycle service: INV-6 audit integrity,
-legal-transition validation, assignment identity, authority, dependency-closure, and
-audit logging. It **fails closed** on an unresolved workspace/project, an
-uninitialised kernel, a missing assignment, an illegal transition, an authority or
-integrity failure, or malformed state. Mutation occurs **only** within the selected
-project's kernel, through the existing assignment repository and audit log — no
-workspace-level assignment store exists or is created. After a transition, `projectos
+evidence and verifier contracts, legal-transition validation, assignment identity,
+authority, dependency-closure, and audit logging. It **fails closed** on an unresolved
+workspace/project, an uninitialised kernel, a missing assignment, missing/invalid
+evidence or a verifier error, an illegal transition, an authority or integrity
+failure, or malformed state. Mutation occurs **only** within the selected project's
+kernel, through the existing assignment repository and audit log — no workspace-level
+assignment or evidence store exists or is created. After a transition, `projectos
 workspace queue` reflects the new status.
 
 ## `projectos workspace handoff`
