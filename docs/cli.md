@@ -340,6 +340,46 @@ authority-dependent actions (`verify`, `complete`, `escalate`, `resolve`). Mutat
 stays within the selected project's kernel; a missing workspace or unresolved
 `--project` fails closed. Exit `0` only when exactly one action executed.
 
+## `projectos workspace recommend-agent`
+
+Recommend **one** supported worker type for one selected assignment, from persisted
+metadata and static ProjectOS policy — the read-only advisor that pairs with
+`dispatch`. It recommends only; it invokes no agent, dispatches nothing, and mutates
+nothing.
+
+```bash
+projectos workspace recommend-agent --project ID|NAME [--assignment A-ID]
+
+# then hand the recommended agent to dispatch:
+projectos workspace dispatch --project ID|NAME --agent <recommended>
+```
+
+The recommendation is a pure function of two persisted assignment fields —
+`work_type` and `executor` — with exactly one category:
+
+| Category | When | Exit |
+|---|---|---|
+| `RECOMMEND` | `work_type` + `executor` agree on a worker | `0` |
+| `FOUNDER_DECISION_REQUIRED` | `executor` is `human`, or `work_type` is `approval`/`external_action` | `0` |
+| `INSUFFICIENT_INFORMATION` | `work_type` and `executor` conflict | `0` |
+| `BLOCKED` | audit integrity could not be verified | non-zero (`2`) |
+
+Policy (static): **claude-code** for `implementation`, `refactor`, `test`, `fix`,
+`deployment`, `merge` (with the `code` executor); **claude-chat** for `architecture`,
+`analysis`; **claude-cowork** for `specification`, `research`, `document` (with the
+`cowork` executor). When `work_type` implies code work but the executor is `cowork`
+(or vice-versa) the metadata conflicts and the advisor returns
+`INSUFFICIENT_INFORMATION` rather than guessing.
+
+Output reports the workspace, project, assignment id/title/status, category, the
+recommended agent (when available), a concise reason, the evidence used
+(`work_type=…`, `executor=…`), and any missing/conflicting information. Assignment
+resolution reuses the P18 contracts (explicit `--assignment`, else the in-flight one)
+and **every recommended agent is one `projectos workspace dispatch --agent` accepts.**
+The command is **strictly read-only** (no dispatch, mutation, audit write, network,
+shell, or AI invocation) and **fails closed** on an unresolved workspace/project, an
+uninitialised kernel, or a missing/ambiguous assignment.
+
 ## `projectos workspace dispatch`
 
 Print a deterministic, read-only, **copy-ready agent handoff package** for one

@@ -194,6 +194,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Required to execute. Without it, the plan is shown and nothing is run.",
     )
 
+    ws_recommend = workspace_subs.add_parser(
+        "recommend-agent",
+        help="Recommend one supported agent for an assignment (read-only; invokes nothing).",
+    )
+    ws_recommend.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
+    ws_recommend.add_argument(
+        "--project",
+        required=True,
+        help="The project owning the assignment, by id or name (required).",
+    )
+    ws_recommend.add_argument(
+        "--assignment",
+        default=None,
+        help="Assignment id (default: the assignment currently in flight).",
+    )
+
     ws_dispatch = workspace_subs.add_parser(
         "dispatch",
         help="Print a read-only, copy-ready agent handoff package (invokes no agent).",

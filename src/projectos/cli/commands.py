@@ -117,6 +117,8 @@ def cmd_workspace(args: argparse.Namespace) -> int:
         return _cmd_workspace_run(args)
     if args.workspace_command == "dispatch":
         return _cmd_workspace_dispatch(args)
+    if args.workspace_command == "recommend-agent":
+        return _cmd_workspace_recommend_agent(args)
     if args.workspace_command == "assignment":
         return _cmd_workspace_assignment(args)
     raise ValidationError(f"Unknown workspace command {args.workspace_command!r}")
@@ -240,6 +242,25 @@ def _open_workspace_project(args: argparse.Namespace) -> tuple[str, str, Kernel]
         )
     kernel = open_project_kernel(workspace_root, resolved.ref.name)
     return workspace.manifest.name, resolved.project_id, kernel
+
+
+def _cmd_workspace_recommend_agent(args: argparse.Namespace) -> int:
+    """`workspace recommend-agent --project <id|name> [--assignment <id>]` (P19).
+
+    Prints a deterministic, read-only agent recommendation. Invokes no agent, dispatches
+    nothing, and mutates nothing. Returns INVARIANT_ERROR when the state is blocked,
+    otherwise OK.
+    """
+    from projectos.infrastructure.workspace_agent_advisor import build_agent_advice, render_advice
+
+    advice = build_agent_advice(
+        Path(args.workspace), project=args.project, assignment=args.assignment
+    )
+    print(render_advice(advice))
+
+    if advice.is_blocked:
+        return int(ExitCode.INVARIANT_ERROR)
+    return int(ExitCode.OK)
 
 
 def _cmd_workspace_dispatch(args: argparse.Namespace) -> int:
