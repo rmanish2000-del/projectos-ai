@@ -146,6 +146,34 @@ and never overwrites an existing registration or a discovered project's own
 `project.yaml`. `--dry-run` overrides `--register`, so a dry run always leaves state
 untouched. Re-running after a register is a visible no-op (idempotent).
 
+## `projectos workspace status`
+
+Print a concise, deterministic, read-only **operational status**: is the workspace
+safe to operate, what is incomplete, and what is broken. It is the operational
+counterpart to `handoff` (and derives from the same read-model), not a duplicate of
+it — where `handoff` reports full context, `status` interprets it into a condition,
+counts, and an actionable problem list.
+
+```bash
+projectos workspace status [--workspace PATH] [--project ID|NAME]
+```
+
+Reports an overall **condition** — `healthy`, `warning`, or `failure` — plus counts
+(registered projects, initialised projects, projects with an active assignment,
+available configured packs, integrity failures, warnings), a per-project line in
+stable identifier order (initialised state, active assignment, repository-metadata
+availability, pack availability, integrity), and the problems behind the condition.
+`--project` marks one project as the focus; counts stay workspace-wide.
+
+Severity: **failure** is invalid or broken state that makes operation unsafe — a
+malformed workspace/project manifest, a broken audit chain, an unresolved focus;
+**warning** is valid-but-incomplete — an uninitialised kernel, a missing configured
+pack directory, an unavailable pack; **healthy** is neither. The command is
+**read-only** (no mutation, registration, assignment generation, repository write, or
+network) and exits `3` on a failure condition, `0` otherwise (a warning is still
+operational). A missing workspace fails closed; a malformed manifest is reported *as*
+a failure condition rather than crashing, so `status` always prints a status.
+
 ## `projectos workspace handoff`
 
 Print a deterministic, read-only **handoff** — the minimum repository-backed context

@@ -97,6 +97,8 @@ def cmd_workspace(args: argparse.Namespace) -> int:
         return _cmd_workspace_discover(args)
     if args.workspace_command == "handoff":
         return _cmd_workspace_handoff(args)
+    if args.workspace_command == "status":
+        return _cmd_workspace_status(args)
     raise ValidationError(f"Unknown workspace command {args.workspace_command!r}")
 
 
@@ -193,6 +195,23 @@ def _cmd_workspace_list(args: argparse.Namespace) -> int:
         print(f"    pack        {status.pack or '—'}")
         print(f"    repository  {status.repository}")
         print(f"    kernel      {state}    active assignment: {active}")
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_status(args: argparse.Namespace) -> int:
+    """`workspace status` — concise, read-only operational status (P8).
+
+    Returns ESCALATION_REQUIRED when the overall condition is a failure (unsafe to
+    operate), otherwise OK — a warning condition is still operational. Makes no
+    changes.
+    """
+    from projectos.infrastructure.workspace_status import Condition, build_status, render_status
+
+    status = build_status(Path(args.workspace), project=args.project)
+    print(render_status(status))
+
+    if status.condition is Condition.FAILURE:
+        return int(ExitCode.ESCALATION_REQUIRED)
     return int(ExitCode.OK)
 
 
