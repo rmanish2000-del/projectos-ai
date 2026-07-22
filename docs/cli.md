@@ -146,6 +146,36 @@ and never overwrites an existing registration or a discovered project's own
 `project.yaml`. `--dry-run` overrides `--register`, so a dry run always leaves state
 untouched. Re-running after a register is a visible no-op (idempotent).
 
+## `projectos workspace handoff`
+
+Print a deterministic, read-only **handoff** — the minimum repository-backed context
+a fresh AI coding session needs to continue ProjectOS work safely, so the brief is
+derived from committed contracts instead of assembled by hand.
+
+```bash
+projectos workspace handoff [--workspace PATH] [--project ID|NAME]
+```
+
+Resolves the workspace and reports, for each registered project (ordered by stable
+identifier): its id and registration name, pack, declared repository metadata
+(adapter / remote / branch / path), the kernel location and whether it is
+initialised, the current in-flight assignment, and the audit-chain integrity result.
+`--project` focuses on one project by its `project.id` (or registration name),
+project-first.
+
+Every value comes from an existing contract; nothing is fabricated. Missing optional
+information is shown explicitly as `unavailable` with a reason (e.g. no repository
+declared, kernel not initialised, no assignment in flight). Output is deterministic —
+stable ordering, no timestamps, no environment noise — so identical state produces
+identical output.
+
+The command is **read-only**: it never mutates the workspace, registers a project,
+generates an assignment, writes to a repository, or touches the network. A malformed
+workspace or project manifest fails closed (the error names the offending file); a
+per-project state or broken-chain fault is reported against that project as
+`integrity FAILURE` and surfaced through exit code `3`, without blanking the rest of
+the handoff.
+
 ## The rapid-build pack
 
 `workspace init` ships one **loadable** pack, `rapid-build` (the others are
