@@ -107,6 +107,8 @@ def cmd_workspace(args: argparse.Namespace) -> int:
         return _cmd_workspace_queue(args)
     if args.workspace_command == "next":
         return _cmd_workspace_next(args)
+    if args.workspace_command == "assignment":
+        return _cmd_workspace_assignment(args)
     raise ValidationError(f"Unknown workspace command {args.workspace_command!r}")
 
 
@@ -206,16 +208,13 @@ def _cmd_workspace_list(args: argparse.Namespace) -> int:
     return int(ExitCode.OK)
 
 
-def _cmd_workspace_next(args: argparse.Namespace) -> int:
-    """`workspace next --project <id|name>` — generate the next assignment for one
-    resolved project through the existing per-project next path (P11).
+def _open_workspace_project(args: argparse.Namespace) -> tuple[str, str, Kernel]:
+    """Resolve exactly one registered project and open its kernel through the bridge.
 
-    Workspace-level orchestration only: resolve exactly one project, open its kernel
-    through the existing bridge, and delegate to :func:`run_next` — the same
-    generation path `projectos next` uses. No new generator, persistence, or state.
-    Fails closed on an unresolved project or an uninitialised kernel; every other
-    guard (active slot, escalation, pack loading, integrity) is enforced unchanged
-    inside the lifecycle.
+    Shared by the workspace commands that operate on a single project's kernel
+    (`next`, `assignment`). Returns ``(workspace_name, project_id, kernel)``. Fails
+    closed on a missing/malformed workspace (via `resolve_workspace`), an unresolved
+    project, or an uninitialised kernel (via `open_project_kernel`).
     """
     from projectos.infrastructure.workspace_bridge import open_project_kernel
     from projectos.infrastructure.workspace_manifest import resolve_workspace
@@ -229,18 +228,78 @@ def _cmd_workspace_next(args: argparse.Namespace) -> int:
             f"Project {args.project!r} is not registered in this workspace",
             detail=f"Known project identifiers: {known}.",
         )
-
     kernel = open_project_kernel(workspace_root, resolved.ref.name)
+    return workspace.manifest.name, resolved.project_id, kernel
 
-    print(
-        formatting.heading(
-            f"WORKSPACE NEXT  {workspace.manifest.name}  →  {resolved.project_id}"
-        )
-    )
+
+def _cmd_workspace_next(args: argparse.Namespace) -> int:
+    """`workspace next --project <id|name>` — generate the next assignment for one
+    resolved project through the existing per-project next path (P11).
+
+    Workspace-level orchestration only: resolve exactly one project, open its kernel
+    through the existing bridge, and delegate to :func:`run_next` — the same
+    generation path `projectos next` uses. No new generator, persistence, or state.
+    Fails closed on an unresolved project or an uninitialised kernel; every other
+    guard (active slot, escalation, pack loading, integrity) is enforced unchanged
+    inside the lifecycle.
+    """
+    workspace_name, project_id, kernel = _open_workspace_project(args)
+
+    print(formatting.heading(f"WORKSPACE NEXT  {workspace_name}  →  {project_id}"))
     run = run_next(kernel, dry_run=False)
     if run.assignment is not None:
         print(f"    Persisted {kernel.layout.assignment_file(str(run.assignment.id))}")
     return run.exit_code
+
+
+def _cmd_workspace_assignment(args: argparse.Namespace) -> int:
+    """`workspace assignment <action> --project <id|name> [--assignment <id>]` (P12).
+
+    Operate one selected project's assignment through the existing lifecycle
+    transitions, from the workspace, without entering the project repository.
+
+    Supported actions — `show`, `block`, `unblock` — each delegate to the exact
+    canonical path the per-project commands use: `kernel.assignments.get` (read),
+    `kernel.lifecycle.block`, `kernel.lifecycle.unblock`. Every guard (INV-6 audit
+    integrity, legal-transition validation, authority, dependency-closure, persistence,
+    audit logging) is enforced unchanged inside the lifecycle service — nothing is
+    reimplemented here. Mutation stays inside the selected project's kernel.
+
+    Fails closed on an unresolved workspace/project, an uninitialised kernel, a missing
+    assignment (`get` raises `NotFoundError`), an illegal transition, an integrity
+    failure, or malformed state — every case raised by the reused contracts.
+    """
+    workspace_name, project_id, kernel = _open_workspace_project(args)
+    assignment_id = _resolve_assignment_id(kernel, args.assignment)
+    header = formatting.heading(
+        f"WORKSPACE ASSIGNMENT  {workspace_name}  →  {project_id}"
+    )
+
+    if args.action == "show":
+        assignment = kernel.assignments.get(assignment_id)
+        print(header)
+        print(formatting.assignment_summary(assignment))
+        if assignment.status is Status.VERIFIED:
+            print(f"    Approvals {kernel.lifecycle.approval_status(assignment).describe()}")
+        return int(ExitCode.OK)
+
+    if args.action == "block":
+        if not args.reason.strip():
+            raise ValidationError(
+                "`workspace assignment block` requires --reason",
+                detail="A blocker without a stated cause cannot be cleared by anyone else.",
+            )
+        assignment = kernel.lifecycle.block(assignment_id, args.reason)
+    else:  # unblock (argparse restricts `action` to the supported choices)
+        assignment = kernel.lifecycle.unblock(assignment_id)
+
+    print(header)
+    print(f"    Assignment {assignment_id}")
+    print(f"    Action     {args.action}")
+    print(f"    Status     {assignment.status.value.upper()}")
+    if args.action == "block":
+        print(f"    Reason     {args.reason}")
+    return int(ExitCode.OK)
 
 
 def _cmd_workspace_queue(args: argparse.Namespace) -> int:

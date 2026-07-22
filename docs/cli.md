@@ -262,6 +262,43 @@ an unresolved project, an uninitialised project kernel, a missing/unavailable pa
 malformed state, or an audit-integrity failure. It writes only within the selected
 project's kernel — no workspace-level assignment store exists or is created.
 
+## `projectos workspace assignment`
+
+Operate **one** selected project's assignment through the existing lifecycle
+transitions, from the workspace, without entering the project's repository. Pure
+orchestration: each action delegates to the exact canonical path the per-project
+commands use, so every guard is enforced unchanged.
+
+```bash
+projectos workspace assignment <show|block|unblock> \
+  --project ID|NAME [--assignment ID] [--reason TEXT]
+```
+
+Actions (the smallest coherent set for managing execution after `workspace next`):
+
+| Action | Delegates to | Effect |
+|---|---|---|
+| `show` | `assignments.get` (+ `approval_status`) | Read-only summary of the assignment |
+| `block` | `lifecycle.block(id, reason)` | → `BLOCKED` (requires `--reason`) |
+| `unblock` | `lifecycle.unblock(id)` | `BLOCKED` → `READY` once dependencies are closed |
+
+`--project` is **required** (by `project.id` or registration name; no auto-selection).
+`--assignment` defaults to the assignment currently in flight, matching the
+per-project convention. Output reports the workspace, project, assignment, action,
+and resulting status. `start`/`resume` are intentionally not here — they are reached
+through `projectos workspace next`; `verify`, `complete`/`approve`/`attest`, and the
+founder actions are excluded because they carry evidence or authority contracts that
+would widen this command.
+
+Every guard is inherited unchanged from the lifecycle service: INV-6 audit integrity,
+legal-transition validation, assignment identity, authority, dependency-closure, and
+audit logging. It **fails closed** on an unresolved workspace/project, an
+uninitialised kernel, a missing assignment, an illegal transition, an authority or
+integrity failure, or malformed state. Mutation occurs **only** within the selected
+project's kernel, through the existing assignment repository and audit log — no
+workspace-level assignment store exists or is created. After a transition, `projectos
+workspace queue` reflects the new status.
+
 ## `projectos workspace handoff`
 
 Print a deterministic, read-only **handoff** — the minimum repository-backed context
