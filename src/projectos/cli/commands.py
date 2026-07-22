@@ -99,6 +99,8 @@ def cmd_workspace(args: argparse.Namespace) -> int:
         return _cmd_workspace_handoff(args)
     if args.workspace_command == "status":
         return _cmd_workspace_status(args)
+    if args.workspace_command == "doctor":
+        return _cmd_workspace_doctor(args)
     raise ValidationError(f"Unknown workspace command {args.workspace_command!r}")
 
 
@@ -195,6 +197,22 @@ def _cmd_workspace_list(args: argparse.Namespace) -> int:
         print(f"    pack        {status.pack or '—'}")
         print(f"    repository  {status.repository}")
         print(f"    kernel      {state}    active assignment: {active}")
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_doctor(args: argparse.Namespace) -> int:
+    """`workspace doctor` — read-only diagnostics with remediation (P9).
+
+    Returns ESCALATION_REQUIRED when the overall outcome is a failure, otherwise OK
+    (a warning is still operational). Makes no changes.
+    """
+    from projectos.infrastructure.workspace_doctor import Outcome, build_report, render_report
+
+    report = build_report(Path(args.workspace), project=args.project)
+    print(render_report(report))
+
+    if report.outcome is Outcome.FAIL:
+        return int(ExitCode.ESCALATION_REQUIRED)
     return int(ExitCode.OK)
 
 

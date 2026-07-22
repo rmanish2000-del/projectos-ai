@@ -134,6 +134,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Focus on one project by id or name (project-first resolution).",
     )
 
+    ws_doctor = workspace_subs.add_parser(
+        "doctor",
+        help="Read-only diagnostics with safe, advisory remediation guidance.",
+    )
+    ws_doctor.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
+    ws_doctor.add_argument(
+        "--project",
+        default=None,
+        help="Diagnose one project by id or name (project-first resolution).",
+    )
+
     ws_handoff = workspace_subs.add_parser(
         "handoff",
         help="Print a deterministic, read-only workspace handoff for a fresh session.",

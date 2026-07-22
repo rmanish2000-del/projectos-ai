@@ -174,6 +174,39 @@ network) and exits `3` on a failure condition, `0` otherwise (a warning is still
 operational). A missing workspace fails closed; a malformed manifest is reported *as*
 a failure condition rather than crashing, so `status` always prints a status.
 
+## `projectos workspace doctor`
+
+Run deterministic, read-only **diagnostics** and print safe, advisory remediation
+guidance. Where `status` reports a condition and a flat problem list, `doctor`
+re-presents the same read-model as named checks — each with a stable id, a
+`PASS`/`WARN`/`FAIL`/`SKIP` result, the affected scope, a concise explanation, and,
+where one genuinely exists, a suggested action referencing only verified ProjectOS
+commands. It runs no new collection: it derives from the P8 status read-model (which
+reuses the P7 handoff), so it never re-reads the workspace independently.
+
+```bash
+projectos workspace doctor [--workspace PATH] [--project ID|NAME]
+```
+
+Checks: `workspace-manifest` (manifests resolve and validate; unique identifiers and
+repositories — a malformed manifest, duplicate id, or duplicate registration fails
+here), `project-focus`, `configured-packs` (each configured pack directory present),
+and per project `project-identifier`, `kernel-initialised`, `project-pack`,
+`audit-integrity` (audit chain and assignment-state readable and consistent), and
+`repository-metadata`. `--project` narrows the per-project checks to one project;
+workspace checks always run.
+
+Diagnostics are ordered deterministically: failures first, then warnings, passes, and
+neutral skips; within a result, workspace-scoped before project-scoped, projects by
+stable identifier, then by check id. Suggested actions are **advisory only** — they
+reference existing read-only or scaffolding commands (`projectos workspace
+init-project`, `projectos workspace status`, `projectos pack validate`, `projectos
+history --verify`), never a destructive or unverified command, and never a repair the
+CLI does not actually provide (there is no `--fix`). The command is **strictly
+read-only** (no manifest write, registration, initialisation, assignment generation,
+audit change, or network) and exits `3` on a `FAIL` outcome, `0` for `PASS` or `WARN`
+(a warning is still operational). A missing workspace fails closed.
+
 ## `projectos workspace handoff`
 
 Print a deterministic, read-only **handoff** — the minimum repository-backed context
