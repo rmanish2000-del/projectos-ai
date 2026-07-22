@@ -123,6 +123,17 @@ def build_parser() -> argparse.ArgumentParser:
     ws_list = workspace_subs.add_parser("list", help="List registered projects and status.")
     ws_list.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
 
+    ws_handoff = workspace_subs.add_parser(
+        "handoff",
+        help="Print a deterministic, read-only workspace handoff for a fresh session.",
+    )
+    ws_handoff.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
+    ws_handoff.add_argument(
+        "--project",
+        default=None,
+        help="Focus on one project by id or name (project-first resolution).",
+    )
+
     ws_discover = workspace_subs.add_parser(
         "discover",
         help="Discover projects under the workspace and report their registration status.",

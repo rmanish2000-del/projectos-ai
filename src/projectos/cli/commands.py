@@ -95,6 +95,8 @@ def cmd_workspace(args: argparse.Namespace) -> int:
         return _cmd_workspace_list(args)
     if args.workspace_command == "discover":
         return _cmd_workspace_discover(args)
+    if args.workspace_command == "handoff":
+        return _cmd_workspace_handoff(args)
     raise ValidationError(f"Unknown workspace command {args.workspace_command!r}")
 
 
@@ -191,6 +193,23 @@ def _cmd_workspace_list(args: argparse.Namespace) -> int:
         print(f"    pack        {status.pack or '—'}")
         print(f"    repository  {status.repository}")
         print(f"    kernel      {state}    active assignment: {active}")
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_handoff(args: argparse.Namespace) -> int:
+    """`workspace handoff` — deterministic, read-only session context (P7).
+
+    Renders the canonical handoff and returns ESCALATION_REQUIRED when any project's
+    integrity or state could not be verified, so a scripted session can branch on it;
+    otherwise OK. Makes no changes.
+    """
+    from projectos.infrastructure.workspace_handoff import build_handoff, render_handoff
+
+    handoff = build_handoff(Path(args.workspace), project=args.project)
+    print(render_handoff(handoff))
+
+    if any(project.failure is not None for project in handoff.projects):
+        return int(ExitCode.ESCALATION_REQUIRED)
     return int(ExitCode.OK)
 
 
