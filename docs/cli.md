@@ -302,6 +302,44 @@ required human inputs (roles, founder decisions, evidence) as clearly-labelled
 repository mutation, or network. A missing workspace or an unresolved `--project` fails
 closed.
 
+## `projectos workspace run`
+
+Execute **one** safe planner recommendation. This is the only workspace command that
+mutates from a recommendation — **it is opt-in and single-shot, never autonomous.**
+
+```bash
+projectos workspace run --project ID|NAME [--confirm]
+```
+
+> ⚠️ **`--confirm` is required to mutate.** Without it, `run` rebuilds the plan, shows
+> it, and executes nothing (returning a non-zero refusal code). It is **not** a
+> scheduler or a loop: one invocation rebuilds the plan once and delegates **at most
+> one** existing canonical operation.
+
+**How it stays safe.** It obtains a *fresh* P16 plan (rebuilt immediately before
+execution — a saved or stale recommendation can never be supplied or acted on) and
+executes only when the planner itself marked the recommendation executable via its
+typed `action`. It **never parses the rendered command string**, and there is **no
+shell, subprocess, or arbitrary-command execution** — it delegates directly to the
+existing typed Python helpers (`run_next` for generation/start, `lifecycle.unblock` for
+a concrete blocked assignment). Every lifecycle, integrity, active-slot, authority,
+evidence, and audit guard in the delegated path remains authoritative.
+
+**Executable allowlist** (fully-determined, non-authority actions only):
+
+| Recommendation | Delegates to | Effect |
+|---|---|---|
+| no assignment / `READY` | `run_next` (canonical `workspace next`) | generate/start the next assignment |
+| `BLOCKED` (a concrete assignment) | `lifecycle.unblock(id)` | `BLOCKED` → `READY` (deps re-checked) |
+
+**Always refused** (non-mutating, exit `2`): `FOUNDER_DECISION_REQUIRED`,
+`EXTERNAL_INPUT_REQUIRED` (e.g. an `ACTIVE` assignment needing evidence, or a
+`REJECTED` one needing a fix first), `BLOCKED` integrity state, `COMPLETE`, any
+recommendation whose command carries a `<PLACEHOLDER>`, and evidence- or
+authority-dependent actions (`verify`, `complete`, `escalate`, `resolve`). Mutation
+stays within the selected project's kernel; a missing workspace or unresolved
+`--project` fails closed. Exit `0` only when exactly one action executed.
+
 ## `projectos workspace assignment`
 
 Operate **one** selected project's assignment through the existing lifecycle

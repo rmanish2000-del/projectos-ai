@@ -47,6 +47,28 @@ class Category(StrEnum):
     COMPLETE = "complete"
 
 
+class ActionKind(StrEnum):
+    """A fully-determined, non-authority operation the plan executor (P17) may run.
+
+    Only recommendations that need no unresolved placeholders and no external input
+    carry a :class:`PlannedAction`; every other recommendation leaves ``action`` None
+    and is not executable. This is the *single* source of truth for what is safe to
+    execute — the executor reads it rather than parsing the command string.
+    """
+
+    GENERATE_NEXT = "generate-next"  # the canonical `workspace next` operation
+    UNBLOCK = "unblock"  # `lifecycle.unblock` for a concrete blocked assignment
+
+
+@dataclass(frozen=True, slots=True)
+class PlannedAction:
+    """The typed operation behind an executable recommendation (never a shell string)."""
+
+    kind: ActionKind
+    assignment_id: str | None = None
+    """The concrete assignment id for UNBLOCK; None for GENERATE_NEXT."""
+
+
 @dataclass(frozen=True, slots=True)
 class Recommendation:
     """Exactly one recommended next action."""
@@ -56,6 +78,9 @@ class Recommendation:
     command: str | None = None
     """A verified existing command, with any required inputs as `<LABELLED>` placeholders."""
     required_inputs: tuple[str, ...] = ()
+    action: PlannedAction | None = None
+    """The executable typed operation, set only for a fully-determined safe action
+    (P17). ``None`` means the recommendation is advisory only and not auto-executable."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,6 +278,7 @@ def _for_idle(
                 f"--assignment {blocked.id}"
             ),
             required_inputs=("all blocking dependencies must be CLOSED",),
+            action=PlannedAction(ActionKind.UNBLOCK, assignment_id=str(blocked.id)),
         )
 
     ready = _first(assignments, Status.READY)
@@ -261,6 +287,7 @@ def _for_idle(
             Category.RUN_COMMAND,
             reason=f"{ready.id} is READY; `next` starts it",
             command=f"projectos workspace next --project {project_id}",
+            action=PlannedAction(ActionKind.GENERATE_NEXT),
         )
 
     draft = _first(assignments, Status.DRAFT)
@@ -296,6 +323,7 @@ def _for_idle(
         Category.RUN_COMMAND,
         reason="no assignment exists yet; `next` generates the first",
         command=f"projectos workspace next --project {project_id}",
+        action=PlannedAction(ActionKind.GENERATE_NEXT),
     )
 
 

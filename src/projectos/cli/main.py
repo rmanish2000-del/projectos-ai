@@ -178,6 +178,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="The project to plan for, by id or name (required — no auto-select).",
     )
 
+    ws_run = workspace_subs.add_parser(
+        "run",
+        help="Execute one safe planner recommendation — MUTATES only with --confirm.",
+    )
+    ws_run.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
+    ws_run.add_argument(
+        "--project",
+        required=True,
+        help="The project to act on, by id or name (required — no auto-select).",
+    )
+    ws_run.add_argument(
+        "--confirm",
+        action="store_true",
+        help="Required to execute. Without it, the plan is shown and nothing is run.",
+    )
+
     ws_assignment = workspace_subs.add_parser(
         "assignment",
         help="Operate one project's assignment via existing lifecycle transitions.",
