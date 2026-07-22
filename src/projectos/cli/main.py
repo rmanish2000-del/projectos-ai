@@ -194,6 +194,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Required to execute. Without it, the plan is shown and nothing is run.",
     )
 
+    ws_dashboard = workspace_subs.add_parser(
+        "dashboard",
+        help="Aggregate the workspace read-models into one read-only founder view.",
+    )
+    ws_dashboard.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
+    ws_dashboard.add_argument(
+        "--project",
+        default=None,
+        help="Focus the project rows on one project by id or name (summary stays workspace-wide).",
+    )
+
     ws_recommend = workspace_subs.add_parser(
         "recommend-agent",
         help="Recommend one supported agent for an assignment (read-only; invokes nothing).",

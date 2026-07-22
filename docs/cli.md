@@ -340,6 +340,37 @@ authority-dependent actions (`verify`, `complete`, `escalate`, `resolve`). Mutat
 stays within the selected project's kernel; a missing workspace or unresolved
 `--project` fails closed. Exit `0` only when exactly one action executed.
 
+## `projectos workspace dashboard`
+
+Aggregate the existing workspace read-models into **one** deterministic, read-only
+founder view. It is a pure aggregation layer — it computes nothing of its own, writes
+nothing, and invokes no agent; every value is lifted verbatim from one of the reused
+models.
+
+```bash
+projectos workspace dashboard              # the whole workspace
+projectos workspace dashboard --project ID|NAME   # focus the project rows
+```
+
+Reused models (no calculation is duplicated): **P7 handoff** (repository, pack),
+**P8 status** (health/condition, per-project status, workspace counts), **P9 doctor**
+(outcome, per-project diagnostics), **P10 queue** (per-project buckets and counts),
+**P16 planner** (next recommended action per project), **P19 advisor** (recommended
+agent per project).
+
+It shows a workspace header (health, integrity failures, doctor outcome, project
+count); for each project a row with its active assignment + status, recommended agent
+(P19), next recommended action (P16), queue summary (P10), doctor fail/warn (P9),
+integrity (P8), open-escalation / blocked / ready flags, pack and repository (P7); and
+a workspace summary (active projects, blocked projects, projects needing a founder
+decision, projects ready to execute, completed work).
+
+`--project` filters which project rows are shown; the workspace summary is always
+computed across every project. Output is deterministic (stable id ordering, no
+timestamps, no environment noise). The command is **strictly read-only** — no writes,
+lifecycle transitions, dispatch, or AI invocation — and fails closed on an unresolved
+workspace or `--project`.
+
 ## `projectos workspace recommend-agent`
 
 Recommend **one** supported worker type for one selected assignment, from persisted
