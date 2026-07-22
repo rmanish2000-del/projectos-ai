@@ -173,7 +173,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ws_assignment.add_argument(
         "action",
-        choices=["show", "verify", "complete", "block", "unblock"],
+        choices=["show", "verify", "complete", "escalate", "resolve", "block", "unblock"],
         help="Lifecycle action to perform on the selected assignment.",
     )
     ws_assignment.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
@@ -207,6 +207,39 @@ def build_parser() -> argparse.ArgumentParser:
         "--attest",
         action="store_true",
         help="For `complete`: record a human attestation instead of an approval.",
+    )
+    # -- escalate (same arguments as `founder escalate`) ----------------------
+    ws_assignment.add_argument(
+        "--summary", default="", help="For `escalate`: the decision statement (required)."
+    )
+    ws_assignment.add_argument(
+        "--trigger",
+        choices=[trigger.value for trigger in EscalationTrigger],
+        default=EscalationTrigger.FOUNDER_DECISION.value,
+        help="For `escalate`: the escalation trigger (default: founder_decision).",
+    )
+    ws_assignment.add_argument(
+        "--option",
+        action="append",
+        default=[],
+        metavar="ID|DESCRIPTION|CONSEQUENCE",
+        help="For `escalate`: repeatable; at least two are required (spec 9.3).",
+    )
+    ws_assignment.add_argument(
+        "--recommend", default=None, help="For `escalate`: the recommended option id."
+    )
+    # -- resolve (founder-only; same arguments as `founder resolve`) ----------
+    ws_assignment.add_argument(
+        "--escalation", default=None, help="For `resolve`: the escalation id, e.g. E-0001."
+    )
+    ws_assignment.add_argument(
+        "--decision", default=None, help="For `resolve`: option id or free-form directive."
+    )
+    ws_assignment.add_argument(
+        "--outcome",
+        choices=[outcome.value for outcome in FounderDecision],
+        default=FounderDecision.PROCEED.value,
+        help="For `resolve`: the founder decision outcome (default: proceed).",
     )
 
     ws_handoff = workspace_subs.add_parser(

@@ -259,27 +259,49 @@ def _cmd_workspace_assignment(args: argparse.Namespace) -> int:
     transitions, from the workspace, without entering the project repository.
 
     Supported actions — `show`, `block`, `unblock` (P12), `verify` (P13),
-    `complete` (P14) — each delegate to the exact canonical path the per-project
-    commands use: `kernel.assignments.get` (read), `kernel.lifecycle.block`,
-    `kernel.lifecycle.unblock`, :func:`run_verify` (the `projectos verify` flow), and
-    :func:`run_complete` (the `projectos complete` approve/attest flow). Every guard
-    (INV-6 audit integrity, evidence and verifier contracts, the VERIFIED-state and
-    §8.6.2 authority requirements for approval, legal-transition validation,
-    dependency-closure, persistence, audit logging) is enforced unchanged inside the
-    lifecycle service — nothing is reimplemented here. Mutation stays inside the
-    selected project's kernel.
+    `complete` (P14), `escalate`/`resolve` (P15) — each delegate to the exact
+    canonical path the per-project commands use: `kernel.assignments.get` (read),
+    `kernel.lifecycle.block`, `kernel.lifecycle.unblock`, :func:`run_verify`
+    (`projectos verify`), :func:`run_complete` (`projectos complete`),
+    :func:`run_escalate` and :func:`run_resolve` (`projectos founder escalate`/
+    `resolve`). Every guard (INV-6 audit integrity, evidence and verifier contracts,
+    the VERIFIED-state and §8.6.2 authority requirements for approval, the **founder-
+    only** authority for resolution (spec 9.2), the ESCALATE/FOUNDER_RESOLVE legal
+    transitions, dependency-closure, persistence, audit logging) is enforced unchanged
+    inside the lifecycle service — nothing is reimplemented here. Mutation stays inside
+    the selected project's kernel.
+
+    `resolve` targets an escalation by `--escalation` id (not an assignment) and is
+    founder-only; every other action operates on the selected or in-flight assignment.
 
     Fails closed on an unresolved workspace/project, an uninitialised kernel, a missing
     assignment (`get` raises `NotFoundError`), missing/invalid evidence or a verifier
     error (`RuleFailure`), an unverified assignment, an unauthorized actor, incomplete
-    approvals, an illegal transition, an integrity failure, or malformed state — every
-    case raised by the reused contracts.
+    approvals, a non-founder resolution attempt, an illegal source status, a malformed
+    reason/summary/resolution, an integrity failure, or malformed state — every case
+    raised by the reused contracts.
     """
     workspace_name, project_id, kernel = _open_workspace_project(args)
-    assignment_id = _resolve_assignment_id(kernel, args.assignment)
     header = formatting.heading(
         f"WORKSPACE ASSIGNMENT  {workspace_name}  →  {project_id}"
     )
+
+    # `resolve` targets an escalation (not an assignment), so it is handled before the
+    # in-flight-assignment resolution the other actions share.
+    if args.action == "resolve":
+        if not args.escalation:
+            raise ValidationError("`workspace assignment resolve` requires --escalation")
+        if not args.decision:
+            raise ValidationError("`workspace assignment resolve` requires --decision")
+        print(header)
+        return run_resolve(
+            kernel,
+            EscalationId.parse(args.escalation),
+            args.decision,
+            FounderDecision(args.outcome),
+        )
+
+    assignment_id = _resolve_assignment_id(kernel, args.assignment)
 
     if args.action == "show":
         assignment = kernel.assignments.get(assignment_id)
@@ -297,6 +319,22 @@ def _cmd_workspace_assignment(args: argparse.Namespace) -> int:
         print(header)
         return run_complete(
             kernel, assignment_id, role=Role(args.role), attest=args.attest
+        )
+
+    if args.action == "escalate":
+        if not args.summary.strip():
+            raise ValidationError(
+                "`workspace assignment escalate` requires --summary",
+                detail="A decision-ready escalation states the decision the founder must make.",
+            )
+        print(header)
+        return run_escalate(
+            kernel,
+            trigger=EscalationTrigger(args.trigger),
+            summary=args.summary,
+            options=_parse_options(args.option),
+            assignment_id=assignment_id,
+            recommendation=args.recommend,
         )
 
     if args.action == "block":
@@ -796,6 +834,55 @@ def cmd_block(args: argparse.Namespace) -> int:
 # -- founder ------------------------------------------------------------------
 
 
+def run_escalate(
+    kernel: Kernel,
+    *,
+    trigger: EscalationTrigger,
+    summary: str,
+    options: tuple[EscalationOption, ...],
+    assignment_id: AssignmentId | None,
+    recommendation: str | None,
+) -> int:
+    """The canonical escalation flow — the single path shared by `projectos founder
+    escalate` and `projectos workspace assignment escalate`.
+
+    It calls `lifecycle.escalate()` exactly once (which guards INV-6 integrity,
+    validates the ESCALATE transition before any write, persists the escalation, and
+    freezes the scoped assignment to ESCALATED). Nothing here creates an escalation
+    type or decides authority.
+    """
+    escalation = kernel.lifecycle.escalate(
+        trigger=trigger,
+        summary=summary,
+        options=options,
+        assignment_id=assignment_id,
+        recommendation=recommendation,
+    )
+    print(formatting.heading(f"ESCALATION OPENED  {escalation.id}"))
+    print(formatting.escalation_summary(escalation))
+    return int(ExitCode.ESCALATION_REQUIRED)
+
+
+def run_resolve(
+    kernel: Kernel, escalation_id: EscalationId, decision: str, outcome: FounderDecision
+) -> int:
+    """The canonical resolution flow — the single **founder-only** path shared by
+    `projectos founder resolve` and `projectos workspace assignment resolve`.
+
+    It calls `lifecycle.resolve()` exactly once (which guards INV-6 integrity, enforces
+    that the acting identity is the founder (spec 9.2), validates the decision against
+    the escalation's options, persists the resolution, and re-drives the state
+    machine). Nothing here fabricates founder identity or a decision.
+    """
+    escalation, assignment = kernel.lifecycle.resolve(escalation_id, decision, outcome)
+    print(formatting.heading(f"RESOLVED  {escalation.id}"))
+    print(f"  Decision  {decision}  ({outcome.value})")
+    if assignment is not None:
+        print()
+        print(formatting.assignment_summary(assignment))
+    return int(ExitCode.OK)
+
+
 def cmd_founder(args: argparse.Namespace) -> int:
     kernel = _kernel(args)
     lifecycle = kernel.lifecycle
@@ -812,28 +899,21 @@ def cmd_founder(args: argparse.Namespace) -> int:
         return int(ExitCode.ESCALATION_REQUIRED)
 
     if args.founder_command == "escalate":
-        escalation = lifecycle.escalate(
+        return run_escalate(
+            kernel,
             trigger=EscalationTrigger(args.trigger),
             summary=args.summary,
             options=_parse_options(args.option),
             assignment_id=AssignmentId.parse(args.assignment) if args.assignment else None,
             recommendation=args.recommend,
         )
-        print(formatting.heading(f"ESCALATION OPENED  {escalation.id}"))
-        print(formatting.escalation_summary(escalation))
-        return int(ExitCode.ESCALATION_REQUIRED)
 
-    escalation, assignment = lifecycle.resolve(
+    return run_resolve(
+        kernel,
         EscalationId.parse(args.escalation),
         args.decision,
         FounderDecision(args.outcome),
     )
-    print(formatting.heading(f"RESOLVED  {escalation.id}"))
-    print(f"  Decision  {args.decision}  ({args.outcome})")
-    if assignment is not None:
-        print()
-        print(formatting.assignment_summary(assignment))
-    return int(ExitCode.OK)
 
 
 def _parse_options(raw_options: list[str]) -> tuple[EscalationOption, ...]:
