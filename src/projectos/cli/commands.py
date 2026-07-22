@@ -253,21 +253,24 @@ def _cmd_workspace_next(args: argparse.Namespace) -> int:
 
 
 def _cmd_workspace_assignment(args: argparse.Namespace) -> int:
-    """`workspace assignment <action> --project <id|name> [--assignment <id>]` (P12).
+    """`workspace assignment <action> --project <id|name> [--assignment <id>]`.
 
     Operate one selected project's assignment through the existing lifecycle
     transitions, from the workspace, without entering the project repository.
 
-    Supported actions — `show`, `block`, `unblock` — each delegate to the exact
-    canonical path the per-project commands use: `kernel.assignments.get` (read),
-    `kernel.lifecycle.block`, `kernel.lifecycle.unblock`. Every guard (INV-6 audit
-    integrity, legal-transition validation, authority, dependency-closure, persistence,
-    audit logging) is enforced unchanged inside the lifecycle service — nothing is
-    reimplemented here. Mutation stays inside the selected project's kernel.
+    Supported actions — `show`, `block`, `unblock` (P12), `verify` (P13) — each
+    delegate to the exact canonical path the per-project commands use:
+    `kernel.assignments.get` (read), `kernel.lifecycle.block`,
+    `kernel.lifecycle.unblock`, and :func:`run_verify` (the same evidence-verification
+    flow `projectos verify` uses). Every guard (INV-6 audit integrity, evidence and
+    verifier contracts, legal-transition validation, authority, dependency-closure,
+    persistence, audit logging) is enforced unchanged inside the lifecycle service —
+    nothing is reimplemented here. Mutation stays inside the selected project's kernel.
 
     Fails closed on an unresolved workspace/project, an uninitialised kernel, a missing
-    assignment (`get` raises `NotFoundError`), an illegal transition, an integrity
-    failure, or malformed state — every case raised by the reused contracts.
+    assignment (`get` raises `NotFoundError`), missing/invalid evidence or a verifier
+    error (`RuleFailure`), an illegal transition, an integrity failure, or malformed
+    state — every case raised by the reused contracts.
     """
     workspace_name, project_id, kernel = _open_workspace_project(args)
     assignment_id = _resolve_assignment_id(kernel, args.assignment)
@@ -282,6 +285,10 @@ def _cmd_workspace_assignment(args: argparse.Namespace) -> int:
         if assignment.status is Status.VERIFIED:
             print(f"    Approvals {kernel.lifecycle.approval_status(assignment).describe()}")
         return int(ExitCode.OK)
+
+    if args.action == "verify":
+        print(header)
+        return run_verify(kernel, assignment_id, report_path=args.report)
 
     if args.action == "block":
         if not args.reason.strip():
@@ -633,13 +640,21 @@ def cmd_next(args: argparse.Namespace) -> int:
 # -- verify -------------------------------------------------------------------
 
 
-def cmd_verify(args: argparse.Namespace) -> int:
-    kernel = _kernel(args)
+def run_verify(
+    kernel: Kernel, assignment_id: AssignmentId, *, report_path: Path | None
+) -> int:
+    """The canonical verification flow — the single evidence-verification path shared
+    by `projectos verify` and `projectos workspace assignment verify`.
+
+    It invokes `lifecycle.verify()` exactly once (which guards INV-6 integrity,
+    ingests the claim, runs the verifier against repository evidence, transitions, and
+    persists + audits), renders the canonical report, and raises `RuleFailure` when
+    the evidence does not pass. Nothing here evaluates evidence or decides a verdict.
+    """
     lifecycle = kernel.lifecycle
-    assignment_id = _resolve_assignment_id(kernel, args.assignment)
 
     # A claim only stages evidence for verification; it never decides anything.
-    outcome = lifecycle.verify(assignment_id, _load_claim(assignment_id, args.report))
+    outcome = lifecycle.verify(assignment_id, _load_claim(assignment_id, report_path))
     print(formatting.verification_report(outcome.report))
 
     if outcome.report.passed:
@@ -654,6 +669,12 @@ def cmd_verify(args: argparse.Namespace) -> int:
         f"{len(outcome.report.failures)} of {len(outcome.report.results)} criteria failed",
         detail="Fix the gaps above, then run `projectos verify` again.",
     )
+
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    kernel = _kernel(args)
+    assignment_id = _resolve_assignment_id(kernel, args.assignment)
+    return run_verify(kernel, assignment_id, report_path=args.report)
 
 
 def _load_claim(assignment_id: AssignmentId, report_path: Path | None) -> CompletionClaim:
