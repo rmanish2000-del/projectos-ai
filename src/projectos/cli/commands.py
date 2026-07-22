@@ -119,6 +119,8 @@ def cmd_workspace(args: argparse.Namespace) -> int:
         return _cmd_workspace_dispatch(args)
     if args.workspace_command == "recommend-agent":
         return _cmd_workspace_recommend_agent(args)
+    if args.workspace_command == "dashboard":
+        return _cmd_workspace_dashboard(args)
     if args.workspace_command == "assignment":
         return _cmd_workspace_assignment(args)
     raise ValidationError(f"Unknown workspace command {args.workspace_command!r}")
@@ -242,6 +244,19 @@ def _open_workspace_project(args: argparse.Namespace) -> tuple[str, str, Kernel]
         )
     kernel = open_project_kernel(workspace_root, resolved.ref.name)
     return workspace.manifest.name, resolved.project_id, kernel
+
+
+def _cmd_workspace_dashboard(args: argparse.Namespace) -> int:
+    """`workspace dashboard [--project <id|name>]` — one aggregated founder view (P20).
+
+    Aggregates the existing read-models into a single deterministic, read-only view. It
+    computes nothing of its own, writes nothing, and invokes no agent.
+    """
+    from projectos.infrastructure.workspace_dashboard import build_dashboard, render_dashboard
+
+    dashboard = build_dashboard(Path(args.workspace), project=args.project)
+    print(render_dashboard(dashboard))
+    return int(ExitCode.OK)
 
 
 def _cmd_workspace_recommend_agent(args: argparse.Namespace) -> int:
