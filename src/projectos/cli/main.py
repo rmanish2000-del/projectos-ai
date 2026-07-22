@@ -167,6 +167,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="The project to generate for, by id or name (required — no auto-select).",
     )
 
+    ws_assignment = workspace_subs.add_parser(
+        "assignment",
+        help="Operate one project's assignment via existing lifecycle transitions.",
+    )
+    ws_assignment.add_argument(
+        "action",
+        choices=["show", "block", "unblock"],
+        help="Lifecycle action to perform on the selected assignment.",
+    )
+    ws_assignment.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
+    ws_assignment.add_argument(
+        "--project",
+        required=True,
+        help="The project owning the assignment, by id or name (required).",
+    )
+    ws_assignment.add_argument(
+        "--assignment",
+        default=None,
+        help="Assignment id (default: the assignment currently in flight).",
+    )
+    ws_assignment.add_argument(
+        "--reason", default="", help="Reason for `block` (required for the block action)."
+    )
+
     ws_handoff = workspace_subs.add_parser(
         "handoff",
         help="Print a deterministic, read-only workspace handoff for a fresh session.",
