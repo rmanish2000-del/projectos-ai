@@ -272,13 +272,28 @@ def _cmd_workspace_focus(args: argparse.Namespace) -> int:
 
 
 def _cmd_workspace_inbox(args: argparse.Namespace) -> int:
-    """`workspace inbox` — the founder's prioritised operational inbox (P22).
+    """`workspace inbox [--project ID|NAME]` — the founder's operational inbox (P22/P23).
 
-    Aggregates the existing read-models (P20 dashboard + P21 ranking) into one read-only
-    list of the projects needing attention, most urgent first. Computes nothing of its
-    own, writes nothing, and invokes no agent. Returns INVARIANT_ERROR when any project
-    is an integrity failure (an unsafe state is present), otherwise OK.
+    Without ``--project`` (P22): aggregates the existing read-models (P20 dashboard + P21
+    ranking) into one read-only list of the projects needing attention, most urgent
+    first. With ``--project`` (P23): drills into that one project and explains its inbox
+    item and the evidence behind its recommended next action. Both paths compute nothing
+    of their own, write nothing, and invoke no agent. Returns INVARIANT_ERROR when an
+    integrity failure is present (unsafe), otherwise OK; an unknown project id fails
+    closed with a typed non-zero exit via the reused dashboard.
     """
+    if args.project is not None:
+        from projectos.infrastructure.workspace_inbox_detail import (
+            build_inbox_detail,
+            render_inbox_detail,
+        )
+
+        detail = build_inbox_detail(Path(args.workspace), args.project)
+        print(render_inbox_detail(detail))
+        if not detail.integrity_ok:
+            return int(ExitCode.INVARIANT_ERROR)
+        return int(ExitCode.OK)
+
     from projectos.infrastructure.workspace_inbox import build_inbox, render_inbox
 
     inbox = build_inbox(Path(args.workspace))
