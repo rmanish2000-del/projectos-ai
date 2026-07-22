@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from projectos.application import validation_service
 from projectos.cli import formatting
@@ -41,6 +42,9 @@ from projectos.infrastructure.scaffold import build_manifest, scaffold
 from projectos.infrastructure.system import StaticIdentityProvider
 from projectos.infrastructure.template_binding import YamlTemplateBinder
 from projectos.infrastructure.yaml_io import read_yaml
+
+if TYPE_CHECKING:
+    from projectos.infrastructure.workspace_plan import Plan
 
 
 def _kernel(args: argparse.Namespace) -> Kernel:
@@ -109,6 +113,8 @@ def cmd_workspace(args: argparse.Namespace) -> int:
         return _cmd_workspace_next(args)
     if args.workspace_command == "plan":
         return _cmd_workspace_plan(args)
+    if args.workspace_command == "run":
+        return _cmd_workspace_run(args)
     if args.workspace_command == "assignment":
         return _cmd_workspace_assignment(args)
     raise ValidationError(f"Unknown workspace command {args.workspace_command!r}")
@@ -248,6 +254,99 @@ def _cmd_workspace_plan(args: argparse.Namespace) -> int:
 
     if plan.is_blocked:
         return int(ExitCode.INVARIANT_ERROR)
+    return int(ExitCode.OK)
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionResult:
+    """The outcome of `workspace run`: the fresh plan, whether one action executed, and
+    the resulting assignment/status or the refusal reason."""
+
+    plan: Plan
+    executed: bool
+    result_assignment: str | None = None
+    result_status: str | None = None
+    refusal: str | None = None
+
+
+def execute_plan(workspace_root: Path, *, project: str, confirm: bool) -> ExecutionResult:
+    """Rebuild the P16 plan and, only with confirmation, execute at most one fully-
+    determined safe action by delegating exactly once to an existing typed helper.
+
+    Safe by construction: the *planner* marks which recommendations are executable
+    (`Recommendation.action`); this function never parses the command string, never
+    runs a shell/subprocess, and refuses — without mutating — when unconfirmed or when
+    the recommendation is not executable (founder/authority/evidence/external/blocked/
+    complete/placeholder). The plan is rebuilt here, immediately before execution, so a
+    stale recommendation can never be acted on; the delegated helper re-validates every
+    lifecycle, integrity, and active-slot guard.
+    """
+    from projectos.infrastructure.workspace_bridge import open_project_kernel
+    from projectos.infrastructure.workspace_manifest import resolve_workspace
+    from projectos.infrastructure.workspace_plan import ActionKind, build_plan
+
+    plan = build_plan(workspace_root, project=project)  # fresh state, right now
+    action = plan.recommendation.action
+
+    if not confirm:
+        return ExecutionResult(
+            plan,
+            executed=False,
+            refusal="not confirmed — re-run with --confirm to execute the recommended action",
+        )
+    if action is None:
+        return ExecutionResult(
+            plan,
+            executed=False,
+            refusal=(
+                f"{plan.recommendation.category.value} is not safely executable "
+                "(it needs a founder decision, external input, or is blocked/complete)"
+            ),
+        )
+
+    # Confirmed and executable: open a fresh kernel and delegate exactly once.
+    workspace = resolve_workspace(workspace_root.resolve())
+    resolved = workspace.by_id(project) or workspace.by_name(project)
+    assert resolved is not None  # build_plan already resolved it above
+    kernel = open_project_kernel(workspace_root, resolved.ref.name)
+
+    assignment: Assignment | None
+    if action.kind is ActionKind.GENERATE_NEXT:
+        assignment = run_next(kernel, dry_run=False).assignment
+    else:  # ActionKind.UNBLOCK — the concrete blocked id came from the fresh plan
+        assert action.assignment_id is not None
+        assignment = kernel.lifecycle.unblock(AssignmentId.parse(action.assignment_id))
+
+    return ExecutionResult(
+        plan,
+        executed=True,
+        result_assignment=str(assignment.id) if assignment is not None else None,
+        result_status=assignment.status.value if assignment is not None else None,
+    )
+
+
+def _cmd_workspace_run(args: argparse.Namespace) -> int:
+    """`workspace run --project <id|name> --confirm` — execute one safe planner
+    recommendation (P17). Mutation requires `--confirm`; every refusal is read-only.
+    """
+    from projectos.infrastructure.workspace_plan import render_plan
+
+    result = execute_plan(Path(args.workspace), project=args.project, confirm=args.confirm)
+
+    if not result.executed:
+        # Show the fresh plan and the refusal; nothing was mutated.
+        print(render_plan(result.plan))
+        print()
+        print(formatting.heading("NOT EXECUTED"))
+        print(f"  {result.refusal}")
+        return int(ExitCode.INVARIANT_ERROR)
+
+    # Executed: the delegated helper has already reported the canonical operation above.
+    print(formatting.heading(
+        f"EXECUTED  {result.plan.workspace_name}  →  {result.plan.project_id}"
+    ))
+    print(f"  recommendation  {result.plan.recommendation.category.value}")
+    print(f"  result          {result.result_assignment or '—'}  [{result.result_status or '—'}]")
     return int(ExitCode.OK)
 
 
