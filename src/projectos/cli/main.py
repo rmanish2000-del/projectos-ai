@@ -194,6 +194,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Required to execute. Without it, the plan is shown and nothing is run.",
     )
 
+    ws_dispatch = workspace_subs.add_parser(
+        "dispatch",
+        help="Print a read-only, copy-ready agent handoff package (invokes no agent).",
+    )
+    ws_dispatch.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
+    ws_dispatch.add_argument(
+        "--project",
+        required=True,
+        help="The project to hand off, by id or name (required — no auto-select).",
+    )
+    ws_dispatch.add_argument(
+        "--agent",
+        required=True,
+        choices=["claude-code", "claude-chat", "claude-cowork"],
+        help="The explicit AI worker type (required — no auto-select).",
+    )
+    ws_dispatch.add_argument(
+        "--assignment",
+        default=None,
+        help="Assignment id (default: the assignment currently in flight).",
+    )
+
     ws_assignment = workspace_subs.add_parser(
         "assignment",
         help="Operate one project's assignment via existing lifecycle transitions.",

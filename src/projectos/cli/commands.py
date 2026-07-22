@@ -115,6 +115,8 @@ def cmd_workspace(args: argparse.Namespace) -> int:
         return _cmd_workspace_plan(args)
     if args.workspace_command == "run":
         return _cmd_workspace_run(args)
+    if args.workspace_command == "dispatch":
+        return _cmd_workspace_dispatch(args)
     if args.workspace_command == "assignment":
         return _cmd_workspace_assignment(args)
     raise ValidationError(f"Unknown workspace command {args.workspace_command!r}")
@@ -238,6 +240,24 @@ def _open_workspace_project(args: argparse.Namespace) -> tuple[str, str, Kernel]
         )
     kernel = open_project_kernel(workspace_root, resolved.ref.name)
     return workspace.manifest.name, resolved.project_id, kernel
+
+
+def _cmd_workspace_dispatch(args: argparse.Namespace) -> int:
+    """`workspace dispatch --project <id|name> --agent <type> [--assignment <id>]` (P18).
+
+    Prints one deterministic, read-only, copy-ready agent handoff package. Invokes no
+    agent, opens no network, and mutates nothing.
+    """
+    from projectos.infrastructure.workspace_dispatch import build_dispatch, render_dispatch
+
+    package = build_dispatch(
+        Path(args.workspace),
+        agent=args.agent,
+        project=args.project,
+        assignment=args.assignment,
+    )
+    print(render_dispatch(package))
+    return int(ExitCode.OK)
 
 
 def _cmd_workspace_plan(args: argparse.Namespace) -> int:

@@ -340,6 +340,50 @@ authority-dependent actions (`verify`, `complete`, `escalate`, `resolve`). Mutat
 stays within the selected project's kernel; a missing workspace or unresolved
 `--project` fails closed. Exit `0` only when exactly one action executed.
 
+## `projectos workspace dispatch`
+
+Print a deterministic, read-only, **copy-ready agent handoff package** for one
+explicitly-selected assignment and one explicitly-selected AI worker type. This is a
+preparation step only — **it invokes no agent, opens no network, and mutates nothing.**
+
+```bash
+projectos workspace dispatch --project ID|NAME \
+  --agent claude-code|claude-chat|claude-cowork [--assignment A-ID]
+
+# Copy/paste examples
+projectos workspace dispatch --project sensexpilot --agent claude-code
+projectos workspace dispatch --project sensexpilot --agent claude-chat --assignment A-0002
+projectos workspace dispatch --project Alpha --agent claude-cowork
+```
+
+`--project` and `--agent` are **required** (no auto-selection of either). `--assignment`
+defaults to the assignment currently in flight; if there is none, the command fails
+closed and asks for an explicit id.
+
+**Package schema.** A header (handoff version, agent, workspace, project, assignment
+id/title/status), static per-agent execution guidance, repository context (repository
+path or remote/branch, kernel location, configured pack, integrity result), and the
+assignment (objective, context, current state, inputs, scope, out-of-scope,
+constraints, acceptance criteria, quality checks, stopping point), followed by the
+assignment's persisted metadata (work type, executor, workflow mode, owner, evidence
+required, dependencies, risk flags).
+
+Every value is read from an existing contract — the P7 handoff read-model supplies the
+project/repository/pack/integrity context, and the assignment is read through its
+kernel. Fields the assignment/pack genuinely persist are included verbatim; every other
+schema field is labelled **`UNAVAILABLE`** rather than invented (rapid-build, for
+example, defines no `scope`/`inputs`/`constraints`/`quality checks`). The **agent
+guidance is static ProjectOS policy** — `claude-code` implements/tests/commits/PRs and
+stops at the stopping point; `claude-chat` does analysis/architecture/review only and
+flags evidence gaps; `claude-cowork` produces implementation-ready design/docs — never
+generated business or domain content, and it never changes the assignment.
+
+Output is deterministic (stable ordering, no timestamps, no environment noise). The
+command is **strictly read-only** (no assignment mutation, audit write, lifecycle
+transition, registration, repository write, agent invocation, or network) and **fails
+closed** on an unsupported agent, an unresolved workspace/project, an uninitialised
+kernel, an integrity failure, a missing/ambiguous assignment, or malformed state.
+
 ## `projectos workspace assignment`
 
 Operate **one** selected project's assignment through the existing lifecycle
