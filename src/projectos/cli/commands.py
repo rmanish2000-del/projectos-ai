@@ -121,6 +121,8 @@ def cmd_workspace(args: argparse.Namespace) -> int:
         return _cmd_workspace_recommend_agent(args)
     if args.workspace_command == "dashboard":
         return _cmd_workspace_dashboard(args)
+    if args.workspace_command == "focus":
+        return _cmd_workspace_focus(args)
     if args.workspace_command == "assignment":
         return _cmd_workspace_assignment(args)
     raise ValidationError(f"Unknown workspace command {args.workspace_command!r}")
@@ -244,6 +246,27 @@ def _open_workspace_project(args: argparse.Namespace) -> tuple[str, str, Kernel]
         )
     kernel = open_project_kernel(workspace_root, resolved.ref.name)
     return workspace.manifest.name, resolved.project_id, kernel
+
+
+def _cmd_workspace_focus(args: argparse.Namespace) -> int:
+    """`workspace focus` — select the one project needing founder attention (P21).
+
+    Read-only selection over the P20 dashboard; computes nothing of its own and mutates
+    nothing. Returns INVARIANT_ERROR when the selected project is an integrity failure
+    (unsafe), otherwise OK.
+    """
+    from projectos.infrastructure.workspace_focus import (
+        FocusCategory,
+        build_focus,
+        render_focus,
+    )
+
+    result = build_focus(Path(args.workspace))
+    print(render_focus(result))
+
+    if result.category is FocusCategory.INTEGRITY_FAILURE:
+        return int(ExitCode.INVARIANT_ERROR)
+    return int(ExitCode.OK)
 
 
 def _cmd_workspace_dashboard(args: argparse.Namespace) -> int:
