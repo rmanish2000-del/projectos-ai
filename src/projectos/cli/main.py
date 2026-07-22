@@ -211,6 +211,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ws_focus.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
 
+    ws_inbox = workspace_subs.add_parser(
+        "inbox",
+        help="List every project needing founder attention, most urgent first (read-only).",
+    )
+    ws_inbox.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
+
     ws_recommend = workspace_subs.add_parser(
         "recommend-agent",
         help="Recommend one supported agent for an assignment (read-only; invokes nothing).",
