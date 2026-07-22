@@ -405,6 +405,38 @@ action (P16), the founder input required, and the tie-break explanation — or
 command is **strictly read-only** (no mutation, execution, dispatch, or AI invocation)
 and exits `2` when the selected project is an integrity failure (unsafe), `0` otherwise.
 
+## `projectos workspace inbox`
+
+The founder's **operational inbox** — every project needing attention, most urgent
+first. Where `focus` picks the single top project, `inbox` lists them all. It is a pure
+aggregation of existing read-models: it invents no priority, computes no state of its
+own, and mutates nothing.
+
+```bash
+projectos workspace inbox
+```
+
+Each project is classified with the **same** operational-urgency ranking `focus` uses
+(reused verbatim, not recomputed), and only actionable projects appear — P21 ranks 1
+through 5; rank 6 (complete/idle) is omitted. For each one the inbox shows:
+
+| Field | Source |
+|---|---|
+| priority + category | P21 ranking (integrity → founder-decision → blocked → external-input → ready) |
+| project id / name | P20 dashboard |
+| current assignment / status | P8, via the dashboard |
+| why it needs attention | P21 verified reason |
+| recommended next action | P16 planner, via the dashboard |
+| recommended agent | P19 advisor, via the dashboard |
+| one-click command | P16 planner command, via the dashboard |
+| founder input required | P21 founder-input guidance |
+
+**Ordering** is by `(priority, project-id)` ascending — most urgent first, with a stable
+project-id tie-break — so identical state yields identical output. An empty inbox means
+no project needs attention. The command is **strictly read-only** (no mutation,
+execution, dispatch, or AI invocation) and exits `2` when any project is an integrity
+failure (an unsafe state is present), `0` otherwise.
+
 ## `projectos workspace recommend-agent`
 
 Recommend **one** supported worker type for one selected assignment, from persisted

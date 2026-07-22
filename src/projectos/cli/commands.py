@@ -123,6 +123,8 @@ def cmd_workspace(args: argparse.Namespace) -> int:
         return _cmd_workspace_dashboard(args)
     if args.workspace_command == "focus":
         return _cmd_workspace_focus(args)
+    if args.workspace_command == "inbox":
+        return _cmd_workspace_inbox(args)
     if args.workspace_command == "assignment":
         return _cmd_workspace_assignment(args)
     raise ValidationError(f"Unknown workspace command {args.workspace_command!r}")
@@ -265,6 +267,24 @@ def _cmd_workspace_focus(args: argparse.Namespace) -> int:
     print(render_focus(result))
 
     if result.category is FocusCategory.INTEGRITY_FAILURE:
+        return int(ExitCode.INVARIANT_ERROR)
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_inbox(args: argparse.Namespace) -> int:
+    """`workspace inbox` — the founder's prioritised operational inbox (P22).
+
+    Aggregates the existing read-models (P20 dashboard + P21 ranking) into one read-only
+    list of the projects needing attention, most urgent first. Computes nothing of its
+    own, writes nothing, and invokes no agent. Returns INVARIANT_ERROR when any project
+    is an integrity failure (an unsafe state is present), otherwise OK.
+    """
+    from projectos.infrastructure.workspace_inbox import build_inbox, render_inbox
+
+    inbox = build_inbox(Path(args.workspace))
+    print(render_inbox(inbox))
+
+    if inbox.has_integrity_failure:
         return int(ExitCode.INVARIANT_ERROR)
     return int(ExitCode.OK)
 
