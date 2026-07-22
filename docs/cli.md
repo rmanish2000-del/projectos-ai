@@ -371,6 +371,40 @@ timestamps, no environment noise). The command is **strictly read-only** — no 
 lifecycle transitions, dispatch, or AI invocation — and fails closed on an unresolved
 workspace or `--project`.
 
+## `projectos workspace focus`
+
+Select the **one** project most deserving the founder's attention — a read-only
+selection over the P20 dashboard, by verified operational urgency only. It invents no
+business priority (no revenue, deadline, customer value, or impact) and computes
+nothing of its own.
+
+```bash
+projectos workspace focus
+```
+
+Priority order (most urgent first), each mapped to a field the dashboard already
+exposes (P16 planner category, P10 queue state):
+
+| # | Category | Signal |
+|---|---|---|
+| 1 | `INTEGRITY_FAILURE` | P16 `BLOCKED` (audit integrity unverifiable) |
+| 2 | `FOUNDER_DECISION_REQUIRED` | P16 `FOUNDER_DECISION_REQUIRED` (open escalation) |
+| 3 | `BLOCKED` | P10 queue blocked bucket |
+| 4 | `EXTERNAL_INPUT_REQUIRED` | P16 `EXTERNAL_INPUT_REQUIRED` (active assignment) |
+| 5 | `READY_TO_EXECUTE` | P16 `RUN_COMMAND` (a next action is available) |
+| — | not selected | P16 `COMPLETE` (no action) |
+
+**Tie-break:** within the same priority the choice is stable **project-id order** (the
+dashboard already orders projects by id), and the explanation names the projects it was
+chosen over. No persisted priority store or scoring engine exists.
+
+It prints exactly one result — workspace, selected project id/name, focus category, the
+verified reason, current assignment/status, recommended agent (P19), next recommended
+action (P16), the founder input required, and the tie-break explanation — or
+**`NO_FOCUS_REQUIRED`** when there are no projects or every project is complete. The
+command is **strictly read-only** (no mutation, execution, dispatch, or AI invocation)
+and exits `2` when the selected project is an integrity failure (unsafe), `0` otherwise.
+
 ## `projectos workspace recommend-agent`
 
 Recommend **one** supported worker type for one selected assignment, from persisted
