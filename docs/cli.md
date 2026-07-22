@@ -270,8 +270,9 @@ orchestration: each action delegates to the exact canonical path the per-project
 commands use, so every guard is enforced unchanged.
 
 ```bash
-projectos workspace assignment <show|verify|block|unblock> \
-  --project ID|NAME [--assignment ID] [--reason TEXT] [--report FILE]
+projectos workspace assignment <show|verify|complete|block|unblock> \
+  --project ID|NAME [--assignment ID] [--reason TEXT] [--report FILE] \
+  [--role owner|reviewer|founder] [--attest]
 ```
 
 Actions (managing execution after `workspace next`):
@@ -280,29 +281,41 @@ Actions (managing execution after `workspace next`):
 |---|---|---|
 | `show` | `assignments.get` (+ `approval_status`) | Read-only summary of the assignment |
 | `verify` | `lifecycle.verify(id, claim)` | Verify against repository evidence → `VERIFIED`, or `REJECTED` (exit `1`) |
+| `complete` | `lifecycle.approve(id, role)` / `lifecycle.attest(id, role)` | Record an approval → auto-`CLOSED` once the mode's roles are satisfied; `--attest` records an attestation instead |
 | `block` | `lifecycle.block(id, reason)` | → `BLOCKED` (requires `--reason`) |
 | `unblock` | `lifecycle.unblock(id)` | `BLOCKED` → `READY` once dependencies are closed |
 
 `--project` is **required** (by `project.id` or registration name; no auto-selection).
 `--assignment` defaults to the assignment currently in flight, matching the
-per-project convention. `verify` accepts the same optional `--report FILE` (a YAML
-completion report) as `projectos verify`, and delegates to the exact same
-evidence-verification flow (`run_verify` → `lifecycle.verify`); it neither evaluates
-evidence nor decides a verdict, and prints the canonical verification report. Output
-reports the workspace, project, assignment, action, and resulting status.
-`start`/`resume` are reached through `projectos workspace next`;
-`complete`/`approve`/`attest` and the founder actions are excluded because they carry
-authority contracts that would widen this command.
+per-project convention. `verify` accepts the same optional `--report FILE` as
+`projectos verify`; `complete` accepts the same `--role` (default `owner`) and
+`--attest` as `projectos complete`, delegating to the exact same
+approve/attest flow (`run_complete` → `lifecycle.approve`/`attest`). It neither
+evaluates evidence nor decides authority. Output reports the workspace, project,
+assignment, action, and resulting status. `start`/`resume` are reached through
+`projectos workspace next`; the founder escalate/resolve actions are excluded because
+they carry authority contracts that would widen this command.
+
+**`complete` prerequisites** (all enforced by the reused contracts, never by this
+command): the assignment must be **`VERIFIED`** (run `verify` first — approval never
+substitutes for evidence); the acting identity is the selected project's git
+`user.email` and must be **authorized** for the `--role` (owner = the assignment's
+owner or the founder; reviewer = an independent manifest owner; founder = the
+founder); and the workflow mode's required roles must all be recorded to close (fast =
+owner; reviewed = reviewer; governed = reviewer + founder). Completion never invents
+an identity, approval, or attestation. Multi-approver workflows that need distinct
+reviewer identities are done with the per-project `projectos complete --identity`.
 
 Every guard is inherited unchanged from the lifecycle service: INV-6 audit integrity,
-evidence and verifier contracts, legal-transition validation, assignment identity,
-authority, dependency-closure, and audit logging. It **fails closed** on an unresolved
-workspace/project, an uninitialised kernel, a missing assignment, missing/invalid
-evidence or a verifier error, an illegal transition, an authority or integrity
-failure, or malformed state. Mutation occurs **only** within the selected project's
-kernel, through the existing assignment repository and audit log — no workspace-level
-assignment or evidence store exists or is created. After a transition, `projectos
-workspace queue` reflects the new status.
+evidence and verifier contracts, the VERIFIED-state and §8.6.2 authority requirements
+for approval, legal-transition validation, dependency-closure, and audit logging. It
+**fails closed** on an unresolved workspace/project, an uninitialised kernel, a missing
+assignment, missing/invalid evidence or a verifier error, an unverified assignment, an
+unauthorized actor, incomplete approvals, an illegal transition, or an authority or
+integrity failure. Mutation occurs **only** within the selected project's kernel,
+through the existing assignment repository and audit log — no workspace-level
+assignment, evidence, or approval store exists or is created. After a transition,
+`projectos workspace queue` reflects the new status.
 
 ## `projectos workspace handoff`
 

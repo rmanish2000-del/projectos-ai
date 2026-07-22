@@ -173,7 +173,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ws_assignment.add_argument(
         "action",
-        choices=["show", "verify", "block", "unblock"],
+        choices=["show", "verify", "complete", "block", "unblock"],
         help="Lifecycle action to perform on the selected assignment.",
     )
     ws_assignment.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
@@ -196,6 +196,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="FILE",
         help="Completion report (YAML) to ingest before `verify` (same as `verify --report`).",
+    )
+    ws_assignment.add_argument(
+        "--role",
+        choices=[role.value for role in Role],
+        default=Role.OWNER.value,
+        help="Role for `complete` (default: owner; same as `complete --role`).",
+    )
+    ws_assignment.add_argument(
+        "--attest",
+        action="store_true",
+        help="For `complete`: record a human attestation instead of an approval.",
     )
 
     ws_handoff = workspace_subs.add_parser(
