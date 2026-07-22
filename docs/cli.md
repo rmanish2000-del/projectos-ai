@@ -234,6 +234,34 @@ and exits `3` when a project's persisted state could not be read, `0` otherwise 
 blocked assignment is normal queue state, not a failure). A missing workspace or an
 unresolved `--project` fails closed.
 
+## `projectos workspace next`
+
+Generate the next assignment for **one** registered project, through the workspace.
+It is pure orchestration over the existing per-project `next` path: it resolves the
+project, opens its kernel via the workspace→project bridge, and delegates to the same
+generator `projectos next` uses — no new generator, persistence, or state.
+
+```bash
+projectos workspace next --project ID|NAME [--workspace PATH]
+```
+
+`--project` is **required** — the command never auto-selects among projects (no
+scheduling, no prioritisation, no cross-project queue selection). It resolves by
+`project.id` first, then registration name. The generated assignment is produced,
+persisted, classified, audited, and activated exactly as `projectos next` does; the
+output adds a `WORKSPACE NEXT  <workspace>  →  <project>` header and the persisted
+assignment file path. Every guard is inherited unchanged from the lifecycle: INV-1
+one-active-assignment (an already-active project reports "ALREADY ACTIVE" and
+generates nothing), `NEXT_UNDETERMINED` founder escalation, pack loading, and INV-6
+audit-integrity.
+
+There is **no `--dry-run`**: `generate_next()` persists and audits the assignment it
+produces, so there is no genuine non-mutating preview to expose (a dry run would have
+to simulate generation, which this command must not do). The command fails closed on
+an unresolved project, an uninitialised project kernel, a missing/unavailable pack,
+malformed state, or an audit-integrity failure. It writes only within the selected
+project's kernel — no workspace-level assignment store exists or is created.
+
 ## `projectos workspace handoff`
 
 Print a deterministic, read-only **handoff** — the minimum repository-backed context

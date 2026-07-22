@@ -156,6 +156,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show one project's queue by id or name (project-first resolution).",
     )
 
+    ws_next = workspace_subs.add_parser(
+        "next",
+        help="Generate the next assignment for one project via the existing next path.",
+    )
+    ws_next.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
+    ws_next.add_argument(
+        "--project",
+        required=True,
+        help="The project to generate for, by id or name (required — no auto-select).",
+    )
+
     ws_handoff = workspace_subs.add_parser(
         "handoff",
         help="Print a deterministic, read-only workspace handoff for a fresh session.",

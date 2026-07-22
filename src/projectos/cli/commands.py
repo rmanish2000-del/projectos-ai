@@ -8,10 +8,12 @@ kernel already decided.
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from pathlib import Path
 
 from projectos.application import validation_service
 from projectos.cli import formatting
+from projectos.domain.assignment import Assignment
 from projectos.domain.audit import AuditEntry
 from projectos.domain.enums import (
     EscalationTrigger,
@@ -103,6 +105,8 @@ def cmd_workspace(args: argparse.Namespace) -> int:
         return _cmd_workspace_doctor(args)
     if args.workspace_command == "queue":
         return _cmd_workspace_queue(args)
+    if args.workspace_command == "next":
+        return _cmd_workspace_next(args)
     raise ValidationError(f"Unknown workspace command {args.workspace_command!r}")
 
 
@@ -200,6 +204,43 @@ def _cmd_workspace_list(args: argparse.Namespace) -> int:
         print(f"    repository  {status.repository}")
         print(f"    kernel      {state}    active assignment: {active}")
     return int(ExitCode.OK)
+
+
+def _cmd_workspace_next(args: argparse.Namespace) -> int:
+    """`workspace next --project <id|name>` — generate the next assignment for one
+    resolved project through the existing per-project next path (P11).
+
+    Workspace-level orchestration only: resolve exactly one project, open its kernel
+    through the existing bridge, and delegate to :func:`run_next` — the same
+    generation path `projectos next` uses. No new generator, persistence, or state.
+    Fails closed on an unresolved project or an uninitialised kernel; every other
+    guard (active slot, escalation, pack loading, integrity) is enforced unchanged
+    inside the lifecycle.
+    """
+    from projectos.infrastructure.workspace_bridge import open_project_kernel
+    from projectos.infrastructure.workspace_manifest import resolve_workspace
+
+    workspace_root = Path(args.workspace)
+    workspace = resolve_workspace(workspace_root)
+    resolved = workspace.by_id(args.project) or workspace.by_name(args.project)
+    if resolved is None:
+        known = ", ".join(sorted(p.project_id for p in workspace.projects)) or "none"
+        raise NotFoundError(
+            f"Project {args.project!r} is not registered in this workspace",
+            detail=f"Known project identifiers: {known}.",
+        )
+
+    kernel = open_project_kernel(workspace_root, resolved.ref.name)
+
+    print(
+        formatting.heading(
+            f"WORKSPACE NEXT  {workspace.manifest.name}  →  {resolved.project_id}"
+        )
+    )
+    run = run_next(kernel, dry_run=False)
+    if run.assignment is not None:
+        print(f"    Persisted {kernel.layout.assignment_file(str(run.assignment.id))}")
+    return run.exit_code
 
 
 def _cmd_workspace_queue(args: argparse.Namespace) -> int:
@@ -454,8 +495,25 @@ def cmd_status(args: argparse.Namespace) -> int:
 # -- next ---------------------------------------------------------------------
 
 
-def cmd_next(args: argparse.Namespace) -> int:
-    kernel = _kernel(args)
+@dataclass(frozen=True, slots=True)
+class NextRun:
+    """The outcome of one next-assignment flow: an exit code plus the assignment it
+    acted on (generated/resumed/started), or ``None`` when none was (already active,
+    or a founder decision is required)."""
+
+    exit_code: int
+    assignment: Assignment | None
+
+
+def run_next(kernel: Kernel, *, dry_run: bool = False) -> NextRun:
+    """The canonical next-assignment flow — the single generation path shared by
+    `projectos next` and `projectos workspace next`.
+
+    It enforces INV-1 (one active assignment), invokes `lifecycle.generate_next()`
+    exactly once, and activates the result exactly as `next` always has. All
+    persistence, audit logging, classification, and escalation happen inside the
+    lifecycle; this function only orchestrates and renders.
+    """
     lifecycle = kernel.lifecycle
 
     active = lifecycle.active()
@@ -464,23 +522,23 @@ def cmd_next(args: argparse.Namespace) -> int:
         print(formatting.assignment_summary(active))
         print()
         print("  INV-1 permits one active assignment. Finish, block, or cancel it first.")
-        return int(ExitCode.OK)
+        return NextRun(int(ExitCode.OK), None)
 
     result = lifecycle.generate_next()
 
     if result.escalation is not None:
         print(formatting.heading("NEXT UNDETERMINED — FOUNDER DECISION REQUIRED"))
         print(formatting.escalation_summary(result.escalation))
-        return int(ExitCode.ESCALATION_REQUIRED)
+        return NextRun(int(ExitCode.ESCALATION_REQUIRED), None)
 
     assert result.assignment is not None
     candidate = result.assignment
 
-    if args.dry_run:
+    if dry_run:
         print(formatting.heading("NEXT (dry run)"))
         print(formatting.assignment_summary(candidate))
         print(f"    Source    {result.decision.source}")
-        return int(ExitCode.OK)
+        return NextRun(int(ExitCode.OK), candidate)
 
     if candidate.status is Status.REJECTED:
         # A rejected assignment is still the next thing to do; resuming carries its
@@ -490,7 +548,7 @@ def cmd_next(args: argparse.Namespace) -> int:
         print(formatting.assignment_summary(resumed))
         print()
         print(formatting.briefing_block(briefing.render()))
-        return int(ExitCode.OK)
+        return NextRun(int(ExitCode.OK), resumed)
 
     if candidate.status is not Status.READY:
         print(formatting.heading("NEXT ASSIGNMENT NOT YET READY"))
@@ -498,7 +556,7 @@ def cmd_next(args: argparse.Namespace) -> int:
         if candidate.status is Status.DRAFT:
             print()
             print("  Classification is deferred; see `projectos history` for the reason.")
-        return int(ExitCode.OK)
+        return NextRun(int(ExitCode.OK), candidate)
 
     started, briefing = lifecycle.start(candidate.id)
     print(formatting.heading("STARTED"))
@@ -506,7 +564,11 @@ def cmd_next(args: argparse.Namespace) -> int:
     print(f"    Source    {result.decision.source}")
     print()
     print(formatting.briefing_block(briefing.render()))
-    return int(ExitCode.OK)
+    return NextRun(int(ExitCode.OK), started)
+
+
+def cmd_next(args: argparse.Namespace) -> int:
+    return run_next(_kernel(args), dry_run=args.dry_run).exit_code
 
 
 # -- verify -------------------------------------------------------------------
