@@ -270,9 +270,11 @@ orchestration: each action delegates to the exact canonical path the per-project
 commands use, so every guard is enforced unchanged.
 
 ```bash
-projectos workspace assignment <show|verify|complete|block|unblock> \
+projectos workspace assignment <show|verify|complete|escalate|resolve|block|unblock> \
   --project ID|NAME [--assignment ID] [--reason TEXT] [--report FILE] \
-  [--role owner|reviewer|founder] [--attest]
+  [--role owner|reviewer|founder] [--attest] \
+  [--summary TEXT] [--trigger T] [--option "ID|DESC|CONSEQUENCE" ...] [--recommend ID] \
+  [--escalation E-ID] [--decision TEXT] [--outcome proceed|cancel|rescope]
 ```
 
 Actions (managing execution after `workspace next`):
@@ -282,19 +284,29 @@ Actions (managing execution after `workspace next`):
 | `show` | `assignments.get` (+ `approval_status`) | Read-only summary of the assignment |
 | `verify` | `lifecycle.verify(id, claim)` | Verify against repository evidence → `VERIFIED`, or `REJECTED` (exit `1`) |
 | `complete` | `lifecycle.approve(id, role)` / `lifecycle.attest(id, role)` | Record an approval → auto-`CLOSED` once the mode's roles are satisfied; `--attest` records an attestation instead |
+| `escalate` | `lifecycle.escalate(...)` | Open a decision-ready escalation and freeze the assignment → `ESCALATED` (needs `--summary` and ≥2 `--option`s) |
+| `resolve` | `lifecycle.resolve(escalation, decision, outcome)` | **Founder-only** — resolve an escalation by `--escalation` id and re-drive the state machine |
 | `block` | `lifecycle.block(id, reason)` | → `BLOCKED` (requires `--reason`) |
 | `unblock` | `lifecycle.unblock(id)` | `BLOCKED` → `READY` once dependencies are closed |
+
+> ⚠️ **Authority-sensitive:** `resolve` is a **founder-only** decision (spec 9.2). The
+> acting identity is the selected project's git `user.email`; it must be the project's
+> founder, or the resolution is refused. `escalate` needs no special authority — it
+> only *requests* a founder decision. Neither action fabricates a founder identity or a
+> decision.
 
 `--project` is **required** (by `project.id` or registration name; no auto-selection).
 `--assignment` defaults to the assignment currently in flight, matching the
 per-project convention. `verify` accepts the same optional `--report FILE` as
 `projectos verify`; `complete` accepts the same `--role` (default `owner`) and
-`--attest` as `projectos complete`, delegating to the exact same
-approve/attest flow (`run_complete` → `lifecycle.approve`/`attest`). It neither
-evaluates evidence nor decides authority. Output reports the workspace, project,
-assignment, action, and resulting status. `start`/`resume` are reached through
-`projectos workspace next`; the founder escalate/resolve actions are excluded because
-they carry authority contracts that would widen this command.
+`--attest` as `projectos complete`; `escalate` accepts the same `--summary`,
+`--trigger`, repeatable `--option "ID|DESC|CONSEQUENCE"`, and `--recommend` as
+`projectos founder escalate` (scoping the escalation to the selected assignment); and
+`resolve` accepts the same `--escalation`, `--decision`, and `--outcome` as `projectos
+founder resolve`. Each delegates to the exact same flow (`run_verify`,
+`run_complete`, `run_escalate`, `run_resolve` → `lifecycle.*`) and decides no evidence
+or authority of its own. Output reports the workspace, project, assignment, action,
+and resulting status. `start`/`resume` are reached through `projectos workspace next`.
 
 **`complete` prerequisites** (all enforced by the reused contracts, never by this
 command): the assignment must be **`VERIFIED`** (run `verify` first — approval never
@@ -308,14 +320,17 @@ reviewer identities are done with the per-project `projectos complete --identity
 
 Every guard is inherited unchanged from the lifecycle service: INV-6 audit integrity,
 evidence and verifier contracts, the VERIFIED-state and §8.6.2 authority requirements
-for approval, legal-transition validation, dependency-closure, and audit logging. It
-**fails closed** on an unresolved workspace/project, an uninitialised kernel, a missing
-assignment, missing/invalid evidence or a verifier error, an unverified assignment, an
-unauthorized actor, incomplete approvals, an illegal transition, or an authority or
-integrity failure. Mutation occurs **only** within the selected project's kernel,
-through the existing assignment repository and audit log — no workspace-level
-assignment, evidence, or approval store exists or is created. After a transition,
-`projectos workspace queue` reflects the new status.
+for approval, the **founder-only** authority for resolution (spec 9.2), the
+ESCALATE/FOUNDER_RESOLVE legal transitions (validated before any write), and audit
+logging. It **fails closed** on an unresolved workspace/project, an uninitialised
+kernel, a missing assignment, missing/invalid evidence or a verifier error, an
+unverified assignment, an unauthorized actor, incomplete approvals, a **non-founder
+resolution attempt**, an illegal source status, a malformed `--summary`/`--option`/
+`--decision`, or an integrity failure. Mutation occurs **only** within the selected
+project's kernel, through the existing assignment repository, escalation repository,
+and audit log — no workspace-level assignment, evidence, approval, or escalation store
+exists or is created. After a transition, `projectos workspace queue` (and `status`,
+`doctor`, `handoff`) reflects the new state.
 
 ## `projectos workspace handoff`
 
