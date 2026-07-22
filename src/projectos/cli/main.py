@@ -216,6 +216,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="List every project needing founder attention, most urgent first (read-only).",
     )
     ws_inbox.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
+    ws_inbox.add_argument(
+        "--project",
+        default=None,
+        help="Drill down into one project by id or name (read-only detail view).",
+    )
 
     ws_recommend = workspace_subs.add_parser(
         "recommend-agent",

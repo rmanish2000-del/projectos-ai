@@ -437,6 +437,39 @@ no project needs attention. The command is **strictly read-only** (no mutation,
 execution, dispatch, or AI invocation) and exits `2` when any project is an integrity
 failure (an unsafe state is present), `0` otherwise.
 
+### Drill-down: `--project ID|NAME`
+
+Add `--project` to explain **one** inbox item and show the evidence behind its
+recommended next action. It resolves the project project-first (id then name) and **fails
+closed with a non-zero exit on an unknown id**.
+
+```bash
+projectos workspace inbox --project ID|NAME
+```
+
+Like the list, the detail invents nothing — every value is lifted from an existing
+read-model:
+
+| Field | Source |
+|---|---|
+| project id / name | P20 dashboard (resolves the project) |
+| current goal | current assignment `objective` (kernel read), or `unavailable` |
+| current milestone / active assignment | P7 handoff (`A-ID  title  [STATUS]`) |
+| owner | current assignment `owner` (kernel read) |
+| priority + focus reason | P22 inbox item = P21 ranking (reused verbatim) |
+| next action + command | P16 planner, via the dashboard |
+| blockers | labelled from the dashboard's own P9/P10/P16 signals (not recomputed) |
+| dependencies | current assignment `depends_on` (kernel read) |
+| integrity status | P7 handoff integrity summary, or failure text |
+| agent recommendation | P19 advisor, via the dashboard |
+| supporting evidence | current assignment `evidence_required` + `context_refs` |
+
+Assignment-level fields are read through the kernel's own read path and only when the
+kernel is initialised and its chain verifies; a fault is reported as `unavailable`, never
+invented. The detail is **read-only and deterministic**, and exits `2` when the project
+is an integrity failure, `0` otherwise. Omitting `--project` keeps the P22 list behavior
+unchanged.
+
 ## `projectos workspace recommend-agent`
 
 Recommend **one** supported worker type for one selected assignment, from persisted
