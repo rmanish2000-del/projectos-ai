@@ -78,21 +78,11 @@ def add_project(
             detail="Run `projectos workspace init` first.",
         )
 
-    manifest = load_workspace_manifest(layout.manifest)
     project_id = project_id or _slug(name)
     rel_path = f"Projects/{name}"
 
     # -- register in Workspace.yaml (append if absent) ------------------------
-    existing = manifest.project(name)
-    if existing is not None and existing.path != rel_path:
-        raise ValidationError(
-            f"Project {name!r} is already registered at {existing.path!r}",
-            detail="Choose a different name; registration is by unique name.",
-        )
-    if existing is None:
-        raw = read_yaml(layout.manifest)
-        raw.setdefault("projects", []).append({"name": name, "path": rel_path})
-        write_yaml(layout.manifest, raw, header=WORKSPACE_HEADER)
+    register_project_ref(layout, name=name, rel_path=rel_path)
 
     # -- write Projects/<name>/project.yaml -----------------------------------
     project_dir = layout.project_dir(name)
@@ -111,6 +101,33 @@ def add_project(
         return project_dir
     write_yaml(project_yaml, body, header=PROJECT_HEADER)
     return project_dir
+
+
+def register_project_ref(
+    layout: WorkspaceLayout, *, name: str, rel_path: str
+) -> bool:
+    """Append a project reference to `Workspace.yaml` if absent. Idempotent.
+
+    Returns ``True`` when a new entry was appended, ``False`` when the project was
+    already registered at the same path. Raises when the name is already registered
+    at a *different* path (registration is by unique name). Writes only the
+    workspace manifest — it never touches the project's own `project.yaml`, so it is
+    safe to register an already-present, on-disk project discovered under the
+    workspace (P6).
+    """
+    manifest = load_workspace_manifest(layout.manifest)
+    existing = manifest.project(name)
+    if existing is not None:
+        if existing.path != rel_path:
+            raise ValidationError(
+                f"Project {name!r} is already registered at {existing.path!r}",
+                detail="Choose a different name; registration is by unique name.",
+            )
+        return False
+    raw = read_yaml(layout.manifest)
+    raw.setdefault("projects", []).append({"name": name, "path": rel_path})
+    write_yaml(layout.manifest, raw, header=WORKSPACE_HEADER)
+    return True
 
 
 # -- kernel bridge ------------------------------------------------------------

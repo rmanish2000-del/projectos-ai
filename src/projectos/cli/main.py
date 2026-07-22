@@ -123,6 +123,22 @@ def build_parser() -> argparse.ArgumentParser:
     ws_list = workspace_subs.add_parser("list", help="List registered projects and status.")
     ws_list.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
 
+    ws_discover = workspace_subs.add_parser(
+        "discover",
+        help="Discover projects under the workspace and report their registration status.",
+    )
+    ws_discover.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
+    ws_discover.add_argument(
+        "--register",
+        action="store_true",
+        help="Register valid, unregistered projects (default: report only).",
+    )
+    ws_discover.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report only, never change state (overrides --register).",
+    )
+
     # -- validate --------------------------------------------------------------
     subparsers.add_parser(
         "validate", help="Validate manifest, packs, and state. Makes no changes."
