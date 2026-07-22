@@ -101,6 +101,8 @@ def cmd_workspace(args: argparse.Namespace) -> int:
         return _cmd_workspace_status(args)
     if args.workspace_command == "doctor":
         return _cmd_workspace_doctor(args)
+    if args.workspace_command == "queue":
+        return _cmd_workspace_queue(args)
     raise ValidationError(f"Unknown workspace command {args.workspace_command!r}")
 
 
@@ -197,6 +199,23 @@ def _cmd_workspace_list(args: argparse.Namespace) -> int:
         print(f"    pack        {status.pack or '—'}")
         print(f"    repository  {status.repository}")
         print(f"    kernel      {state}    active assignment: {active}")
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_queue(args: argparse.Namespace) -> int:
+    """`workspace queue` — read-only assignment queue inspection (P10).
+
+    Partitions each project's persisted assignments into active / ready / blocked /
+    completed / other. Read-only. Returns ESCALATION_REQUIRED when any project's
+    state could not be read, otherwise OK.
+    """
+    from projectos.infrastructure.workspace_queue import build_queue, render_queue
+
+    queue = build_queue(Path(args.workspace), project=args.project)
+    print(render_queue(queue))
+
+    if queue.has_failures:
+        return int(ExitCode.ESCALATION_REQUIRED)
     return int(ExitCode.OK)
 
 

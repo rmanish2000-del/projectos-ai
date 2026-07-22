@@ -145,6 +145,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Diagnose one project by id or name (project-first resolution).",
     )
 
+    ws_queue = workspace_subs.add_parser(
+        "queue",
+        help="Read-only assignment queue: active/ready/blocked/completed per project.",
+    )
+    ws_queue.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
+    ws_queue.add_argument(
+        "--project",
+        default=None,
+        help="Show one project's queue by id or name (project-first resolution).",
+    )
+
     ws_handoff = workspace_subs.add_parser(
         "handoff",
         help="Print a deterministic, read-only workspace handoff for a fresh session.",

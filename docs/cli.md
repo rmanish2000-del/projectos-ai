@@ -207,6 +207,33 @@ read-only** (no manifest write, registration, initialisation, assignment generat
 audit change, or network) and exits `3` on a `FAIL` outcome, `0` for `PASS` or `WARN`
 (a warning is still operational). A missing workspace fails closed.
 
+## `projectos workspace queue`
+
+Print a deterministic, read-only **assignment queue**: for each project, the
+assignments its kernel has persisted, partitioned by state. ProjectOS Core already
+persists assignments (`.projectos/assignments/*.yaml` with a state-machine status and
+an active-slot pointer); this command adds no new store — it is a *view* that reuses
+the P7 handoff resolution and reads each project's existing
+`kernel.assignments.list_all()`.
+
+```bash
+projectos workspace queue [--workspace PATH] [--project ID|NAME]
+```
+
+Each project's assignments are bucketed into **active** (the INV-1 active-slot
+states — active, evidence-submitted, verifying), **ready**, **blocked** (blocked or
+escalated), **completed** (closed), and **other** (draft, verified, rejected,
+cancelled — each carrying its exact status, so the partition is total and nothing is
+dropped). A header line aggregates the counts across the workspace. `--project`
+narrows to one project by id or name.
+
+Ordering is deterministic: projects by stable identifier, assignments by their
+zero-padded id within each bucket; no timestamps. The command is **read-only** (it
+neither generates nor mutates assignments — generation stays with `projectos next`)
+and exits `3` when a project's persisted state could not be read, `0` otherwise (a
+blocked assignment is normal queue state, not a failure). A missing workspace or an
+unresolved `--project` fails closed.
+
 ## `projectos workspace handoff`
 
 Print a deterministic, read-only **handoff** — the minimum repository-backed context
