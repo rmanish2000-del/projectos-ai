@@ -262,6 +262,46 @@ an unresolved project, an uninitialised project kernel, a missing/unavailable pa
 malformed state, or an audit-integrity failure. It writes only within the selected
 project's kernel — no workspace-level assignment store exists or is created.
 
+## `projectos workspace plan`
+
+Recommend **one** safe next operational action for a project by reading its persisted
+state — the first planning layer above the workspace command surface. It **recommends
+only; it never executes** a transition, and it invents no assignment ids, evidence,
+roles, identities, or decisions.
+
+```bash
+projectos workspace plan --project ID|NAME [--workspace PATH]
+```
+
+The recommendation falls into exactly one category:
+
+| Category | When | Exit |
+|---|---|---|
+| `RUN_COMMAND` | a verified existing command is safe and applicable | `0` |
+| `FOUNDER_DECISION_REQUIRED` | an open escalation awaits a founder decision | `0` |
+| `EXTERNAL_INPUT_REQUIRED` | evidence, implementation, or another external prerequisite is needed | `0` |
+| `COMPLETE` | the assignment is closed — no further action for it | `0` |
+| `BLOCKED` | integrity/malformed state makes operation unsafe | non-zero (`2`) |
+
+State → recommendation (all grounded in existing contracts): uninitialised kernel →
+`init-project`; no assignment / `READY` / `CLOSED` (successor) → `workspace next`;
+`ACTIVE` → implement + commit evidence, then `verify` (external input); `VERIFIED` →
+`complete`; `REJECTED` → fix the criteria, then `next` (resume); `BLOCKED` → `unblock`;
+open escalation → `resolve` (founder-only); `DRAFT` → inspect the deferred
+classification; integrity failure → `BLOCKED`.
+
+Every recommendation is derived from the canonical lifecycle accessors (`current`,
+`open_escalations`, `verify_integrity`, `assignments.list_all`) and the state machine's
+`legal_events` table — a transition-based command is suggested only when its event is
+legal from the assignment's current status. Every suggested command **exists in the
+CLI**, carries the explicit `--project` selector, is never destructive, and shows
+required human inputs (roles, founder decisions, evidence) as clearly-labelled
+`<PLACEHOLDER>`s. Authority-sensitive work (founder resolution) is classified as
+`FOUNDER_DECISION_REQUIRED`, never presented as an automatic action. The command is
+**strictly read-only** — no generation, transition, registration, audit write,
+repository mutation, or network. A missing workspace or an unresolved `--project` fails
+closed.
+
 ## `projectos workspace assignment`
 
 Operate **one** selected project's assignment through the existing lifecycle
