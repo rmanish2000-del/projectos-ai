@@ -107,6 +107,8 @@ def cmd_workspace(args: argparse.Namespace) -> int:
         return _cmd_workspace_queue(args)
     if args.workspace_command == "next":
         return _cmd_workspace_next(args)
+    if args.workspace_command == "plan":
+        return _cmd_workspace_plan(args)
     if args.workspace_command == "assignment":
         return _cmd_workspace_assignment(args)
     raise ValidationError(f"Unknown workspace command {args.workspace_command!r}")
@@ -230,6 +232,23 @@ def _open_workspace_project(args: argparse.Namespace) -> tuple[str, str, Kernel]
         )
     kernel = open_project_kernel(workspace_root, resolved.ref.name)
     return workspace.manifest.name, resolved.project_id, kernel
+
+
+def _cmd_workspace_plan(args: argparse.Namespace) -> int:
+    """`workspace plan --project <id|name>` — recommend one safe next action (P16).
+
+    Strictly read-only: it examines persisted state and recommends exactly one action,
+    never executing a transition. Returns INVARIANT_ERROR when the state is blocked/
+    invalid, otherwise OK (an actionable recommendation or a complete state).
+    """
+    from projectos.infrastructure.workspace_plan import build_plan, render_plan
+
+    plan = build_plan(Path(args.workspace), project=args.project)
+    print(render_plan(plan))
+
+    if plan.is_blocked:
+        return int(ExitCode.INVARIANT_ERROR)
+    return int(ExitCode.OK)
 
 
 def _cmd_workspace_next(args: argparse.Namespace) -> int:

@@ -167,6 +167,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="The project to generate for, by id or name (required — no auto-select).",
     )
 
+    ws_plan = workspace_subs.add_parser(
+        "plan",
+        help="Recommend one safe next action for a project (read-only; recommends, never runs).",
+    )
+    ws_plan.add_argument("--workspace", default=".", help="Workspace root (default: cwd).")
+    ws_plan.add_argument(
+        "--project",
+        required=True,
+        help="The project to plan for, by id or name (required — no auto-select).",
+    )
+
     ws_assignment = workspace_subs.add_parser(
         "assignment",
         help="Operate one project's assignment via existing lifecycle transitions.",
