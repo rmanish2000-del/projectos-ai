@@ -258,19 +258,22 @@ def _cmd_workspace_assignment(args: argparse.Namespace) -> int:
     Operate one selected project's assignment through the existing lifecycle
     transitions, from the workspace, without entering the project repository.
 
-    Supported actions — `show`, `block`, `unblock` (P12), `verify` (P13) — each
-    delegate to the exact canonical path the per-project commands use:
-    `kernel.assignments.get` (read), `kernel.lifecycle.block`,
-    `kernel.lifecycle.unblock`, and :func:`run_verify` (the same evidence-verification
-    flow `projectos verify` uses). Every guard (INV-6 audit integrity, evidence and
-    verifier contracts, legal-transition validation, authority, dependency-closure,
-    persistence, audit logging) is enforced unchanged inside the lifecycle service —
-    nothing is reimplemented here. Mutation stays inside the selected project's kernel.
+    Supported actions — `show`, `block`, `unblock` (P12), `verify` (P13),
+    `complete` (P14) — each delegate to the exact canonical path the per-project
+    commands use: `kernel.assignments.get` (read), `kernel.lifecycle.block`,
+    `kernel.lifecycle.unblock`, :func:`run_verify` (the `projectos verify` flow), and
+    :func:`run_complete` (the `projectos complete` approve/attest flow). Every guard
+    (INV-6 audit integrity, evidence and verifier contracts, the VERIFIED-state and
+    §8.6.2 authority requirements for approval, legal-transition validation,
+    dependency-closure, persistence, audit logging) is enforced unchanged inside the
+    lifecycle service — nothing is reimplemented here. Mutation stays inside the
+    selected project's kernel.
 
     Fails closed on an unresolved workspace/project, an uninitialised kernel, a missing
     assignment (`get` raises `NotFoundError`), missing/invalid evidence or a verifier
-    error (`RuleFailure`), an illegal transition, an integrity failure, or malformed
-    state — every case raised by the reused contracts.
+    error (`RuleFailure`), an unverified assignment, an unauthorized actor, incomplete
+    approvals, an illegal transition, an integrity failure, or malformed state — every
+    case raised by the reused contracts.
     """
     workspace_name, project_id, kernel = _open_workspace_project(args)
     assignment_id = _resolve_assignment_id(kernel, args.assignment)
@@ -289,6 +292,12 @@ def _cmd_workspace_assignment(args: argparse.Namespace) -> int:
     if args.action == "verify":
         print(header)
         return run_verify(kernel, assignment_id, report_path=args.report)
+
+    if args.action == "complete":
+        print(header)
+        return run_complete(
+            kernel, assignment_id, role=Role(args.role), attest=args.attest
+        )
 
     if args.action == "block":
         if not args.reason.strip():
@@ -718,13 +727,21 @@ def _load_claim(assignment_id: AssignmentId, report_path: Path | None) -> Comple
 # -- complete -----------------------------------------------------------------
 
 
-def cmd_complete(args: argparse.Namespace) -> int:
-    kernel = _kernel(args)
-    lifecycle = kernel.lifecycle
-    assignment_id = _resolve_assignment_id(kernel, args.assignment)
-    role = Role(args.role)
+def run_complete(
+    kernel: Kernel, assignment_id: AssignmentId, *, role: Role, attest: bool
+) -> int:
+    """The canonical completion flow — the single approval/attestation path shared by
+    `projectos complete` and `projectos workspace assignment complete`.
 
-    if args.attest:
+    With ``attest`` it records a human attestation; otherwise it records an approval
+    and the lifecycle auto-CLOSEs once the workflow mode's required roles are
+    satisfied. Both delegate to `lifecycle.attest` / `lifecycle.approve`, which enforce
+    INV-6 integrity, the VERIFIED-state requirement, §8.6.2 authority, the legal
+    transition, and persistence + audit. Nothing here decides authority or closure.
+    """
+    lifecycle = kernel.lifecycle
+
+    if attest:
         lifecycle.attest(assignment_id, role)
         print(f"  Attestation recorded for {assignment_id} as {role.value}.")
         print("  Run `projectos verify` to re-evaluate the criteria.")
@@ -742,6 +759,12 @@ def cmd_complete(args: argparse.Namespace) -> int:
     print(f"  Approval recorded for {assignment_id} as {role.value}.")
     print(f"  {status.describe()}")
     return int(ExitCode.OK)
+
+
+def cmd_complete(args: argparse.Namespace) -> int:
+    kernel = _kernel(args)
+    assignment_id = _resolve_assignment_id(kernel, args.assignment)
+    return run_complete(kernel, assignment_id, role=Role(args.role), attest=args.attest)
 
 
 # -- block --------------------------------------------------------------------
