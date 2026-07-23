@@ -180,24 +180,12 @@ def _source_refs(detail: InboxDetail, package: DispatchPackage | None) -> tuple[
         f"project: {detail.project_id}",
     ]
     if package is not None:
-        refs.append(f"repository: {_repository(package)}")
+        # Repository formatting is P18's own — delegated, not reimplemented.
+        refs.append(f"repository: {dispatch_model._repository(package.repository)}")
         refs.append(f"kernel: {package.kernel_location}")
         refs.append(f"pack: {package.pack or UNAVAILABLE}")
         refs.append(f"assignment: {package.assignment.id}")
     return tuple(refs)
-
-
-def _repository(package: DispatchPackage) -> str:
-    repository = package.repository
-    if repository.is_empty:
-        return UNAVAILABLE
-    fields = [
-        ("adapter", repository.adapter),
-        ("remote", repository.remote),
-        ("branch", repository.default_branch),
-        ("path", repository.path),
-    ]
-    return "  ".join(f"{label}={value}" for label, value in fields if value)
 
 
 # -- rendering (deterministic, copy-ready text) --------------------------------

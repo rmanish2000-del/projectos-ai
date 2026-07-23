@@ -334,6 +334,65 @@ def test_handoff_only_composes_existing_models() -> None:
         assert reimplemented not in source, f"handoff must not reimplement {reimplemented}"
 
 
+def test_repository_formatting_is_delegated_to_p18(workspace: Path, tmp_path: Path) -> None:
+    """The repository source-ref must be P18's own formatting, not a P24 copy of it."""
+    from projectos.infrastructure import workspace_dispatch as dispatch_model
+
+    started(workspace, "Alpha", "alpha", tmp_path)
+    handoff = build_action_handoff(workspace, "alpha")
+    detail = build_inbox_detail(workspace, "alpha")
+    package = dispatch_model.build_dispatch(
+        workspace, agent=detail.recommended_agent or "", project="alpha"
+    )
+
+    expected = dispatch_model._repository(package.repository)
+    assert f"repository: {expected}" in handoff.source_refs
+
+
+def test_execution_values_are_verbatim_from_the_p18_package(
+    workspace: Path, tmp_path: Path
+) -> None:
+    """Every execution field is lifted from the P18 package, never recomputed."""
+    from projectos.infrastructure import workspace_dispatch as dispatch_model
+
+    started(workspace, "Alpha", "alpha", tmp_path)
+    handoff = build_action_handoff(workspace, "alpha")
+    detail = build_inbox_detail(workspace, "alpha")
+    package = dispatch_model.build_dispatch(
+        workspace, agent=detail.recommended_agent or "", project="alpha"
+    )
+    assignment = package.assignment
+
+    assert handoff.milestone == assignment.title
+    assert handoff.objective == assignment.objective.strip()
+    assert handoff.stopping_point == assignment.stopping_point.strip()
+    assert len(handoff.acceptance_criteria) == len(assignment.acceptance_criteria)
+    assert handoff.agent_guidance == dispatch_model._AGENT_GUIDANCE[package.agent]
+
+
+def test_context_values_are_verbatim_from_the_p23_detail(
+    workspace: Path, tmp_path: Path
+) -> None:
+    """Every founder-context field is lifted from the P23 detail, never recomputed."""
+    started(workspace, "Alpha", "alpha", tmp_path)
+
+    handoff = build_action_handoff(workspace, "alpha")
+    detail = build_inbox_detail(workspace, "alpha")
+
+    assert handoff.workspace_name == detail.workspace_name
+    assert handoff.project_id == detail.project_id
+    assert handoff.project_name == detail.project_name
+    assert handoff.goal == detail.goal
+    assert handoff.assignment == detail.assignment
+    assert handoff.focus_reason == detail.focus_reason
+    assert handoff.context == detail.context_refs
+    assert handoff.dependencies == detail.dependencies
+    assert handoff.blockers == detail.blockers
+    assert handoff.required_evidence == detail.evidence_refs
+    assert handoff.integrity == detail.integrity
+    assert handoff.integrity_ok == detail.integrity_ok
+
+
 def test_inbox_and_detail_contracts_preserved(workspace: Path, tmp_path: Path) -> None:
     started(workspace, "Alpha", "alpha", tmp_path)
     before = snapshot(workspace)
