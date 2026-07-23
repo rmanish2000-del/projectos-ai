@@ -221,6 +221,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Drill down into one project by id or name (read-only detail view).",
     )
+    ws_inbox.add_argument(
+        "--handoff",
+        action="store_true",
+        help="With --project: print a copy-ready execution handoff for the "
+             "recommended agent (read-only; creates nothing, invokes no agent).",
+    )
 
     ws_recommend = workspace_subs.add_parser(
         "recommend-agent",

@@ -470,6 +470,36 @@ invented. The detail is **read-only and deterministic**, and exits `2` when the 
 is an integrity failure, `0` otherwise. Omitting `--project` keeps the P22 list behavior
 unchanged.
 
+### Execution handoff: `--project ID|NAME --handoff`
+
+Convert the selected inbox item into a complete, **copy-ready execution handoff** for the
+agent P19 already recommended. It decides nothing — it joins two existing models and
+creates, mutates, and writes nothing.
+
+```bash
+projectos workspace inbox --project ID|NAME --handoff
+```
+
+| Section | Source |
+|---|---|
+| project identity, goal, milestone, active assignment | P23 detail + P18 package |
+| priority + focus reason | P21 classification, carried through P22/P23 |
+| recommended agent + guidance | **P19 recommendation** fed into the P18 handoff model |
+| objective, acceptance criteria, stopping point | P18 dispatch (persisted assignment) |
+| relevant context, dependencies, blockers, required evidence | P23 detail |
+| source references (repository, kernel, pack, assignment) | P18 dispatch |
+| integrity warning | P23 detail, when the chain does not verify |
+
+The P18 execution package is built **only** when the chain verifies, an assignment is in
+flight, and a supported agent was recommended. Otherwise the fields it would have
+supplied are reported as `UNAVAILABLE` rather than invented — an empty-but-readable list
+renders as `none`, so *missing* and *empty* stay distinguishable.
+
+**Integrity failure is fail-closed:** no execution package is produced, a `!! INTEGRITY
+WARNING` block tells the agent not to execute, and the command exits `2`. An unknown
+project id, or `--handoff` without `--project`, also exits non-zero. Output is
+deterministic; existing `inbox` and `inbox --project` behavior is unchanged.
+
 ## `projectos workspace recommend-agent`
 
 Recommend **one** supported worker type for one selected assignment, from persisted
