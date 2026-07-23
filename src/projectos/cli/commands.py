@@ -282,6 +282,25 @@ def _cmd_workspace_inbox(args: argparse.Namespace) -> int:
     integrity failure is present (unsafe), otherwise OK; an unknown project id fails
     closed with a typed non-zero exit via the reused dashboard.
     """
+    if args.handoff and args.project is None:
+        raise ValidationError(
+            "--handoff requires --project",
+            detail="A handoff is generated for one selected inbox item: "
+                   "`projectos workspace inbox --project ID|NAME --handoff`.",
+        )
+
+    if args.project is not None and args.handoff:
+        from projectos.infrastructure.workspace_action_handoff import (
+            build_action_handoff,
+            render_action_handoff,
+        )
+
+        handoff = build_action_handoff(Path(args.workspace), args.project)
+        print(render_action_handoff(handoff))
+        if not handoff.integrity_ok:
+            return int(ExitCode.INVARIANT_ERROR)  # fail closed — do not execute
+        return int(ExitCode.OK)
+
     if args.project is not None:
         from projectos.infrastructure.workspace_inbox_detail import (
             build_inbox_detail,
