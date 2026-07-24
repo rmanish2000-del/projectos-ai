@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from projectos.domain.enums import WorkflowMode
 from projectos.domain.errors import NotFoundError, ValidationError
 from projectos.infrastructure.validation import validate
 from projectos.infrastructure.workspace import WorkspaceLayout
@@ -112,6 +113,9 @@ class ProjectManifest:
     name: str
     description: str = ""
     pack: str | None = None
+    workflow_mode: WorkflowMode = WorkflowMode.FAST
+    """The project's default workflow mode. Assignments still carry their own mode;
+    this is the project-level default a registered project resolves to."""
     repository: ProjectRepository | None = None
 
     def __post_init__(self) -> None:
@@ -230,6 +234,8 @@ def load_project_manifest(path: Path) -> ProjectManifest:
         name=project["name"],
         description=project.get("description", ""),
         pack=raw.get("pack"),
+        # Absent means the project takes the default; the schema constrains the values.
+        workflow_mode=WorkflowMode(raw.get("workflow_mode", WorkflowMode.FAST.value)),
         repository=repository,
     )
 

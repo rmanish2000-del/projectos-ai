@@ -23,6 +23,7 @@ from projectos.domain.enums import (
     RepositoryAdapterKind,
     Role,
     Status,
+    WorkflowMode,
 )
 from projectos.domain.errors import (
     ExitCode,
@@ -173,10 +174,11 @@ def _cmd_workspace_add_project(args: argparse.Namespace) -> int:
         repository_path=args.repo,
         repository_remote=args.repo_remote,
         repository_branch=args.repo_branch,
+        workflow_mode=WorkflowMode(args.workflow),
         force=args.force,
     )
     print(formatting.heading(f"PROJECT REGISTERED  {args.name}"))
-    print(f"  pack        {args.pack}")
+    print(f"  pack        {args.pack}    workflow: {args.workflow}")
     if args.repo:
         print(f"  repository  {Path(args.repo).resolve()}")
     if args.repo_remote:
@@ -220,8 +222,9 @@ def _cmd_workspace_list(args: argparse.Namespace) -> int:
         active = status.active_assignment or "—"
         state = "initialised" if status.initialised else "not initialised"
         print(f"  {status.name}  ({status.project_id})")
-        print(f"    pack        {status.pack or '—'}")
-        print(f"    repository  {status.repository}")
+        print(f"    pack        {status.pack or '—'}    workflow: {status.workflow_mode}")
+        print(f"    repository  {status.repository}    branch: {status.active_branch or '—'}")
+        print(f"    state       {status.state_location or '—'}")
         print(f"    kernel      {state}    active assignment: {active}")
     return int(ExitCode.OK)
 

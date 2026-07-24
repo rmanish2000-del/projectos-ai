@@ -19,10 +19,11 @@ Three capabilities, the minimum P5 needs:
 from __future__ import annotations
 
 import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from projectos.domain.enums import RepositoryAdapterKind
+from projectos.domain.enums import RepositoryAdapterKind, WorkflowMode
 from projectos.domain.errors import NotFoundError, ValidationError
 from projectos.infrastructure.container import Kernel, build_kernel
 from projectos.infrastructure.paths import Layout
@@ -56,6 +57,7 @@ def add_project(
     repository_path: str | None = None,
     repository_remote: str | None = None,
     repository_branch: str | None = None,
+    workflow_mode: WorkflowMode = WorkflowMode.FAST,
     force: bool = False,
 ) -> Path:
     """Register a project in the workspace and write its `project.yaml`.
@@ -91,6 +93,7 @@ def add_project(
         "schema_version": 1,
         "project": {"id": project_id, "name": name, "description": description},
         "pack": pack,
+        "workflow_mode": workflow_mode.value,
     }
     repository = _repository_block(repository_path, repository_remote, repository_branch)
     if repository:
@@ -211,10 +214,22 @@ def open_project_kernel(workspace_root: Path, name: str) -> Kernel:
 
 @dataclass(frozen=True, slots=True)
 class ProjectStatus:
+    """Everything a registered project resolves to (P4.2).
+
+    ``active_branch`` is read live from the repository, so — unlike the deterministic
+    workspace read-models — this value depends on the working tree. It is deliberately
+    confined to this resolution path (``workspace list``) and is never fed into the
+    deterministic read-models, whose byte-identical output is a load-bearing guarantee.
+    """
+
     name: str
     project_id: str
     pack: str | None
+    workflow_mode: str
     repository: str | None
+    state_location: str | None
+    """Absolute path to the project's `.projectos` kernel state, when initialised."""
+    active_branch: str | None
     initialised: bool
     active_assignment: str | None
 
@@ -224,7 +239,8 @@ def project_status(workspace_root: Path, resolved: ResolvedProject) -> ProjectSt
     workspace_root = workspace_root.resolve()
     project = resolved.manifest
     repo = project_repository(workspace_root, project, resolved.ref.path)
-    initialised = Layout.for_repo(repo).exists()
+    layout = Layout.for_repo(repo)
+    initialised = layout.exists()
 
     active: str | None = None
     if initialised:
@@ -235,10 +251,40 @@ def project_status(workspace_root: Path, resolved: ResolvedProject) -> ProjectSt
         name=resolved.ref.name,
         project_id=project.id,
         pack=project.pack,
+        workflow_mode=project.workflow_mode.value,
         repository=str(repo),
+        state_location=str(layout.root) if initialised else None,
+        active_branch=active_branch(repo),
         initialised=initialised,
         active_assignment=active,
     )
+
+
+def active_branch(repo: Path) -> str | None:
+    """The repository's currently checked-out branch, or ``None`` when unavailable.
+
+    Fail-safe by design: a missing git, a non-repository path, or a detached HEAD all
+    resolve to ``None`` rather than raising — a branch is context for the founder, never
+    a gate on registering or operating a project.
+
+    Uses ``symbolic-ref`` rather than ``rev-parse --abbrev-ref``: a freshly initialised
+    repository has an *unborn* branch (no commits yet), which ``rev-parse`` cannot
+    resolve but ``symbolic-ref`` reports correctly. A newly registered project is
+    normally exactly that — a repository with no commits.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo), "symbolic-ref", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:  # not a repository, or a detached HEAD
+        return None
+    return result.stdout.strip() or None
 
 
 def list_projects(workspace_root: Path) -> tuple[ProjectStatus, ...]:
