@@ -22,7 +22,13 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from projectos.cli import commands
-from projectos.domain.enums import EscalationTrigger, FounderDecision, RepositoryAdapterKind, Role
+from projectos.domain.enums import (
+    EscalationTrigger,
+    FounderDecision,
+    RepositoryAdapterKind,
+    Role,
+    WorkflowMode,
+)
 from projectos.domain.errors import ExitCode, ProjectOSError
 
 PROGRAM = "projectos"
@@ -108,6 +114,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Repository remote URL, for a repository hosted elsewhere (optional).",
     )
     ws_add.add_argument("--repo-branch", default=None, help="Repository default branch (optional).")
+    ws_add.add_argument(
+        "--workflow",
+        choices=[mode.value for mode in WorkflowMode],
+        default=WorkflowMode.FAST.value,
+        help="The project's default workflow mode (default: fast).",
+    )
     ws_add.add_argument("--force", action="store_true", help="Overwrite an existing project.yaml.")
 
     ws_initp = workspace_subs.add_parser(

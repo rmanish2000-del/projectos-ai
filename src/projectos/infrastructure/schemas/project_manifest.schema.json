@@ -18,6 +18,7 @@
       }
     },
     "pack": { "type": "string", "minLength": 1 },
+    "workflow_mode": { "enum": ["fast", "reviewed", "governed"] },
     "repository": {
       "type": "object",
       "additionalProperties": false,
