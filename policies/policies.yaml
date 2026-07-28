@@ -1,0 +1,92 @@
+version: 1
+
+default_mode: FAST
+
+modes:
+  FAST:
+    description: Routine development with no independent review.
+    review_required: false
+    founder_approval_required: false
+    auto_merge_after_ci: true
+    required_gates:
+      - focused_tests
+      - affected_integration_tests
+      - lint
+      - type_check
+      - build
+      - smoke_test
+
+  REVIEWED:
+    description: Higher-impact engineering requiring one delta-only review.
+    review_required: true
+    review_scope: delta_only
+    founder_approval_required: false
+    auto_merge_after_ci: false
+    required_gates:
+      - focused_tests
+      - affected_integration_tests
+      - full_tests
+      - lint
+      - type_check
+      - build
+
+  GOVERNED:
+    description: Safety-critical, regulated, frozen, or mathematical work.
+    review_required: true
+    review_scope: affected_contract_only
+    founder_approval_required: true
+    auto_merge_after_ci: false
+    required_gates:
+      - full_tests
+      - lint
+      - type_check
+      - build
+      - independent_review
+
+risk_triggers:
+  REVIEWED:
+    - database_schema
+    - shared_contract
+    - major_runtime_integration
+    - authentication
+    - authorization
+    - secrets
+    - security_sensitive_change
+
+  GOVERNED:
+    - research_mathematics
+    - calibration_methodology
+    - probability_methodology
+    - expected_value_methodology
+    - edge_methodology
+    - kelly_methodology
+    - risk_engine
+    - execution_cost_engine
+    - statistical_validation
+    - legal_compliance
+    - frozen_module
+    - breaking_public_contract
+
+routing:
+  FAST:
+    owner: claude_code
+    reviewer: none
+
+  REVIEWED:
+    owner: claude_code
+    reviewer: claude_cowork
+
+  GOVERNED:
+    owner: claude_cowork
+    implementer: claude_code
+    reviewer: claude_cowork
+
+rules:
+  - one_active_assignment_only
+  - one_owner_per_assignment
+  - repository_is_source_of_truth
+  - packs_may_raise_mode_but_never_lower_it
+  - no_review_for_fast_mode
+  - no_governance_docs_for_fast_mode
+  - generate_exactly_one_next_assignment
+  - stop_only_for_genuine_founder_decision
