@@ -1,0 +1,642 @@
+manifest_version: 1
+assignment_id: POS-COW-CHAT-BRIDGE-001
+generated_utc: "2026-07-28T16:00:51+00:00"
+repository:
+  path: "C:\\ProjectOS-AI"
+  branch: "main"
+  commit_sha: "1e9bf2fe091d57844d8f33fb618445671abf4cb6"
+  working_tree_clean: true
+hash_algorithm: sha256
+
+# Status vocabulary is closed: canonical | proposed | blocked | superseded.
+# Classification is from each document's own stated status (first 15 lines) or git
+# history only. Documents that do not declare a status are marked proposed and
+# listed under gaps in the report (never inferred).
+documents:
+  - path: "FOUNDATIONAL_CORPUS_INTEGRATION.md"
+    status: canonical
+    sha256: "e598a993dae6f88d1cdcc9e187f20af7d2be5e6440f6a81c9b46abdc169d0e26"
+    bytes: 27690
+    last_commit: "f819fc7f9107aa2dfac4ed105f5f7d16e1959918"
+    supersedes: null
+    superseded_by: null
+    notes: "**Status:** PO-8 — canonical integration specification. Integration only; **no redesign** of any approved document, no implementation, no code, no contracts, no registry contents, no Genome redesign."
+  - path: "FOUNDER_GOVERNANCE_PACKAGE.md"
+    status: proposed
+    sha256: "b0ceacfb9c7c44cee0c6b516ea9ca4ed2be4221e50b5ebd764d9535919e66b5a"
+    bytes: 7605
+    last_commit: "f819fc7f9107aa2dfac4ed105f5f7d16e1959918"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "PLATFORM_GENOME_V1.md"
+    status: proposed
+    sha256: "e5a8141adbbdd9903afdaa781d5c572c5746aab135357023bc252786fe3bf171"
+    bytes: 50505
+    last_commit: "f819fc7f9107aa2dfac4ed105f5f7d16e1959918"
+    supersedes: null
+    superseded_by: null
+    notes: "**Status:** PO-2 — proposed canonical Platform Genome. Design only; no implementation, no code, no contracts, no repository changes, no Capability Registry changes."
+  - path: "PO-10_RATIFICATION_AND_CORRECTION_PACKAGE.md"
+    status: canonical
+    sha256: "bd47ad51e03ed8b1e8206fcc14515e90df71d41de157d917d171407533103d4e"
+    bytes: 16314
+    last_commit: "d25e206aca6b48d1e0d519e9ff1087d03f3b811f"
+    supersedes: null
+    superseded_by: null
+    notes: "**Status:** PO-10 — governed ratification package for **founder approval**. This document **modifies no canonical document**; it is the approvable proposal. Approval authorizes a *separate* execution assignment to apply the amendments and migrations. Nothing changes until signed, and even then no canonical text is edited by this document."
+  - path: "PO-11_RATIFICATION_EXECUTION_PLAN.md"
+    status: canonical
+    sha256: "17bdb1880e3dea8427b9b0ce5664496543af3e53ff60dd770a08ea8f98689bba"
+    bytes: 17873
+    last_commit: "d25e206aca6b48d1e0d519e9ff1087d03f3b811f"
+    supersedes: null
+    superseded_by: null
+    notes: "**Status:** PO-11 — execution specification. **Design only.** Assumes the PO-10 package is founder-approved. This document **modifies no canonical document and executes no migration**; it specifies *how* a later execution run applies each item. Nothing here edits or runs anything."
+  - path: "PO-2.5_ARCHITECTURE_CONSISTENCY_REVIEW.md"
+    status: proposed
+    sha256: "993ca7d23ef57a914235a3cf6638b80abf04d1be84cc8c30e20c0fb2dfdb03fb"
+    bytes: 22438
+    last_commit: "d25e206aca6b48d1e0d519e9ff1087d03f3b811f"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "PO-3_AI_WORKSPACE_INTEGRATION_SPEC.md"
+    status: proposed
+    sha256: "884d68c309491acf3d7ee1db45c9829bdf0385d32a4beead22855b4eee44d504"
+    bytes: 31155
+    last_commit: "d25e206aca6b48d1e0d519e9ff1087d03f3b811f"
+    supersedes: null
+    superseded_by: null
+    notes: "**Status:** PO-3 — proposed canonical integration specification. Integration spec only; no implementation, no code, no contracts, no registry design, no genome redesign, no repository changes."
+  - path: "PO-4_ECOSYSTEM_GOVERNANCE_FRAMEWORK.md"
+    status: proposed
+    sha256: "69efbb7faeb17316c3f1dbaf361a1daa1573577bf0e94b819d98bdca70114439"
+    bytes: 24179
+    last_commit: "d25e206aca6b48d1e0d519e9ff1087d03f3b811f"
+    supersedes: null
+    superseded_by: null
+    notes: "**Status:** PO-4 — proposed canonical governance framework. Design only; no implementation, no code, no repository changes."
+  - path: "PO-5_GOVERNANCE_METRICS_PLATFORM_HEALTH.md"
+    status: proposed
+    sha256: "0afc8a4ba74c60d889adab9770ac381740f9282c62d23d87f9d5dd0e6187cf2a"
+    bytes: 25002
+    last_commit: "d25e206aca6b48d1e0d519e9ff1087d03f3b811f"
+    supersedes: null
+    superseded_by: null
+    notes: "**Status:** PO-5 — proposed canonical metrics & health model. Design only; no implementation, no code, no repository changes."
+  - path: "PO-7_PLATFORM_METADATA_ARCHITECTURE.md"
+    status: proposed
+    sha256: "ffe8a56496fe96efaceb62d5f22442cb25736f283c88eea4bc08998edcc66852"
+    bytes: 25695
+    last_commit: "d25e206aca6b48d1e0d519e9ff1087d03f3b811f"
+    supersedes: null
+    superseded_by: null
+    notes: "**Status:** PO-7 (Revised) — proposed canonical metadata architecture. Design only; no implementation, no code, no contracts authored, no repository changes. Defines the *models* of the registries, not their contents."
+  - path: "PO-9_ECOSYSTEM_LANGUAGE_STANDARD.md"
+    status: proposed
+    sha256: "7dff1d3a7fc4cce60d7ca5ed4dea4f82b571dd01b467020aa3e980860bdc5702"
+    bytes: 27200
+    last_commit: "d25e206aca6b48d1e0d519e9ff1087d03f3b811f"
+    supersedes: null
+    superseded_by: null
+    notes: "**Status:** PO-9 — proposed canonical language standard. Design only; no implementation, no code, no backlog. **No renaming inside existing documents; no constitutional amendment** — this produces the standard and recommendations only."
+  - path: "PO13_INDEPENDENT_RATIFICATION_REVIEW.md"
+    status: proposed
+    sha256: "ec5e4e49ddb583d6d0f4988a3df1139cf7e600c3c4134f68040ba7d9a8aa3c8c"
+    bytes: 19282
+    last_commit: "d25e206aca6b48d1e0d519e9ff1087d03f3b811f"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "POS-COW-CHAT-BRIDGE-001-SPEC.md"
+    status: canonical
+    sha256: "3052b0aee35f9fd08072d5dd9178a42be0242057184366481e93c4c244ad329c"
+    bytes: 10907
+    last_commit: "1e9bf2fe091d57844d8f33fb618445671abf4cb6"
+    supersedes: null
+    superseded_by: null
+    notes: "canonical per founder decision (assignment B2); the doc self-describes as 'SPEC ONLY — not executed' pre-execution"
+  - path: "PROJECTOS_CONSTITUTION_V1.md"
+    status: proposed
+    sha256: "2b79891bae9061355d4c60c53cff27a9ea042a98e62d4ae891010e7818107c09"
+    bytes: 33636
+    last_commit: "f819fc7f9107aa2dfac4ed105f5f7d16e1959918"
+    supersedes: null
+    superseded_by: null
+    notes: "**Status:** PO-6 — proposed canonical Constitution. Design only; no implementation, no code, no repository changes, no redesign of any existing approved document."
+  - path: "PROJECTOS_IMPLEMENTATION_ROADMAP.md"
+    status: canonical
+    sha256: "48af2b3f1aaae04b5e3db760c2dac51f506e37c1ac83b506b4153d1e4a7d6e27"
+    bytes: 20790
+    last_commit: "f819fc7f9107aa2dfac4ed105f5f7d16e1959918"
+    supersedes: null
+    superseded_by: null
+    notes: "**Status:** Canonical implementation roadmap. **Planning only — no implementation, no code.**"
+  - path: "PROJECTOS_METHODOLOGY_V2.md"
+    status: proposed
+    sha256: "37c5466e5620e80160569ea12a71a61909346b3e749d3b44c360d830140a92f0"
+    bytes: 50066
+    last_commit: "f819fc7f9107aa2dfac4ed105f5f7d16e1959918"
+    supersedes: null
+    superseded_by: null
+    notes: "**Status:** PO-1 — proposed canonical methodology. Design only; no implementation, no code, no repository changes."
+  - path: "PROJECTOS_V0_1_FOUNDATION_SPEC.md"
+    status: proposed
+    sha256: "34f30e70bd1f5a4832b70dbbd4a03d15867d1b1d6799184c47dd28297cc2e371"
+    bytes: 61337
+    last_commit: "a6e54ddb6c092d7a610a301047aefe0446dfcfe5"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "PROJECTOS_WORKSPACE_RUNTIME_SPEC.md"
+    status: proposed
+    sha256: "e393539ac0207f48e8d05e1ec22600fbf5a58edcaab35faa7bc2cef910311fec"
+    bytes: 41284
+    last_commit: "f819fc7f9107aa2dfac4ed105f5f7d16e1959918"
+    supersedes: null
+    superseded_by: null
+    notes: "**Status:** P4 Architecture Amendment — proposed. Design only; no implementation."
+  - path: "ProjectOS/README.md"
+    status: proposed
+    sha256: "01aca00490bf2241da4f5b2ea47277bad23717c34619295a3143e3b6d992d39a"
+    bytes: 221
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "README.md"
+    status: proposed
+    sha256: "740ed50fc76bfdfff0312876a46df0f0ad3a36968dd0281adbccfaba159ac59b"
+    bytes: 6163
+    last_commit: "d8713815fef90fafc9bba807832cf1c7327b61af"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/documentation/README.md"
+    status: proposed
+    sha256: "eec07cda3df71e35996ac7faf23d707a86469c70c6ed913cb92b4b4233d93887"
+    bytes: 222
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/documentation/assignment_rules.md"
+    status: proposed
+    sha256: "d8b2f395950cfa02fe6427093c53d71f883fd6d98157cee2d3aecfff7736b302"
+    bytes: 169
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/documentation/deployment.md"
+    status: proposed
+    sha256: "508509781fb16b4063fd25a657dd3e8969d401abb2d397dc33bcef89cf9bfad3"
+    bytes: 167
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/documentation/project_rules.yaml"
+    status: proposed
+    sha256: "673925698c54eb7f13d134f711233371df4d25794c765d3e1bb4640a48152c45"
+    bytes: 94
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/documentation/quality_gates.yaml"
+    status: proposed
+    sha256: "94e84326cf81c4caea3dc29c9c48fd5a24dea04b29b59415c13d7a312e0945b6"
+    bytes: 94
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/legal/README.md"
+    status: proposed
+    sha256: "89a139fcf20201f4c3d2eddaf8dac290f6bd1b8ed14b93b17f9732e811842b2c"
+    bytes: 206
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/legal/assignment_rules.md"
+    status: proposed
+    sha256: "1354befc04578467f9eb93671ed829bccf600766d1d7effcf197a3cc22cbace8"
+    bytes: 153
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/legal/deployment.md"
+    status: proposed
+    sha256: "eed0b39be7dd3cc16b5d283540f80f9075cea6f67b694734cdbf62dbb2680580"
+    bytes: 151
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/legal/project_rules.yaml"
+    status: proposed
+    sha256: "c0c6df8647d22ac65f33cb717cbcc34d559526e616c65f677890c18b257268b1"
+    bytes: 78
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/legal/quality_gates.yaml"
+    status: proposed
+    sha256: "2472863bff62299f3580d9a6d0e2b7985b121c9a475b7aeb7b533d4c4bcc2369"
+    bytes: 78
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/rapid-build/README.md"
+    status: proposed
+    sha256: "617392d082e32a256c8b00fd4e9e3e71dc472446b6a0d94448ab665b45635298"
+    bytes: 218
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/rapid-build/assignment_rules.md"
+    status: proposed
+    sha256: "6f3c0688290b4b3bdb8776e6c386c0e41ff2f66537b9de614fb2f401ff5fcc5c"
+    bytes: 165
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/rapid-build/deployment.md"
+    status: proposed
+    sha256: "1ac25d154dab960840f1af8ce81c48185545235ba7d61767af7450e0a123e42a"
+    bytes: 163
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/rapid-build/pack.yaml"
+    status: proposed
+    sha256: "8ecd7c4cc8c4d114d71d983c4f272a54a3d835f3a01eebf2f16866a8f0cbbe41"
+    bytes: 260
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/rapid-build/project_rules.yaml"
+    status: proposed
+    sha256: "8e2f24eb1de1a796c68fcec8dc7909ae75c78237ac2b783922563a747a1be04c"
+    bytes: 90
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/rapid-build/quality_gates.yaml"
+    status: proposed
+    sha256: "244d6c152657fe84eae054dc18f025e4c8be162a15ddce94137dadde14d5aab7"
+    bytes: 90
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/rapid-build/templates/build-task.yaml"
+    status: proposed
+    sha256: "b2fce6f2c5ef23b19c4729d7c42417cca16647473d8245ecbd2b724de2eeac6e"
+    bytes: 466
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/rapid-build/templates/define-task.yaml"
+    status: proposed
+    sha256: "685947dbf20509da034b0124ce7af5a6fecdb4ff1c2b5ecde3c034ef4e88208e"
+    bytes: 486
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/renewable/README.md"
+    status: proposed
+    sha256: "b6a5d1eb865ab45830e665567987680389aae0bc50a44df92cae66357faa8017"
+    bytes: 214
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/renewable/assignment_rules.md"
+    status: proposed
+    sha256: "41d64f5340518ebb9ffeda483ae8480c6191a9d4c0848e93f6d82fc7c050e981"
+    bytes: 161
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/renewable/deployment.md"
+    status: proposed
+    sha256: "ca3da2c9518dbd310d9f9b1e4531f9d73a5b713d8743c737a19c82e3b902f33f"
+    bytes: 159
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/renewable/project_rules.yaml"
+    status: proposed
+    sha256: "3c27d631fe1da3395b529cbe4a8edd0523ea57aefafc9386322fa2bcff5bd1df"
+    bytes: 86
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/renewable/quality_gates.yaml"
+    status: proposed
+    sha256: "960b9a088381326b4ad1eefae29fd59e79efda74c82197bc1f4c422c646c6612"
+    bytes: 86
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/software/README.md"
+    status: proposed
+    sha256: "d903ab5fbecf9803b0e027106dc9ff995de94d6b485aa1f980ea3164f369bc97"
+    bytes: 212
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/software/assignment_rules.md"
+    status: proposed
+    sha256: "6f0b7d2debe8f6b5b838fab7e8b181f12047450c2b1c8929fdc193a6fe06e07f"
+    bytes: 159
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/software/deployment.md"
+    status: proposed
+    sha256: "2c016e769815bb723485d4a74609b0035b558db37ed57c5e439fbb8c7a65c26e"
+    bytes: 157
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/software/project_rules.yaml"
+    status: proposed
+    sha256: "d6d12c8bf99ee0c056af0e67297a9baa5656f4d2fd8fa1d3c6560ba011e07fc4"
+    bytes: 84
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/software/quality_gates.yaml"
+    status: proposed
+    sha256: "c3c96f07a20a6ac0c4ae9fea483e4f2d869a0cecf77b37656a2644d04a5f5fd4"
+    bytes: 84
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/trading/README.md"
+    status: proposed
+    sha256: "39371957189c25e1f42baf633ed91acbdd7af2e09c324eb9b33a238569d416c9"
+    bytes: 210
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/trading/assignment_rules.md"
+    status: proposed
+    sha256: "6a1e59c3849e68c040e4acc9f210dc8a0737e5bbf856a28da9c2b7c80bf135f9"
+    bytes: 157
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/trading/deployment.md"
+    status: proposed
+    sha256: "ccc089598223d4df428d6c818e36f606f1da713b27b4bddc59beac1e3c88b551"
+    bytes: 155
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/trading/project_rules.yaml"
+    status: proposed
+    sha256: "9e85c672463f4dfbbd7a3a955e75a43906bb67a7c162cfe0a45969a9970e719b"
+    bytes: 82
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/trading/quality_gates.yaml"
+    status: proposed
+    sha256: "a22c96ed5fdf3b3e8a6a5746d244f71df2096fda73b4772331eaba6b134ed92c"
+    bytes: 82
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/website/README.md"
+    status: proposed
+    sha256: "bb744ec9b059ef53a4060da03944e5b0847a8b8012a439c86ebb85f1f77fe8d7"
+    bytes: 210
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/website/assignment_rules.md"
+    status: proposed
+    sha256: "36630db1fa20ed50d1387a6d217ac6f8291a0b79e856ab177809181e807a8c6e"
+    bytes: 157
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/website/deployment.md"
+    status: proposed
+    sha256: "d9519e0d4e9bd71d70f96676e6a915f99bc9e5d84362d968515de08bc1dfd9f5"
+    bytes: 155
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/website/project_rules.yaml"
+    status: proposed
+    sha256: "93b6fda6410c09c96641f0b6dac752bdc2921675eaf7fcef5af0226ca5e0c9fd"
+    bytes: 82
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Shared/Packs/website/quality_gates.yaml"
+    status: proposed
+    sha256: "5afa71fe913a3412e435766f46b1aa9dfcf36bb416ee1fb19bd0550274cb3026"
+    bytes: 82
+    last_commit: "ed342098756bb13f966fa80d277c41fd2d5f5e76"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "TRADEOS_GOVERNANCE_REVIEW.md"
+    status: proposed
+    sha256: "5aec732f21b886e787b89b5c344a474ef3571081cfd17561257834072bbff439"
+    bytes: 13539
+    last_commit: "63efd1dfe16415c7e989772f902d0d0a32095eb0"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "TRADEOS_IMPROVEMENTS_AND_MIGRATION.md"
+    status: proposed
+    sha256: "57bb899fee337528309df27b01213d7d678928c5cd588069fda070ec1265a342"
+    bytes: 17695
+    last_commit: "63efd1dfe16415c7e989772f902d0d0a32095eb0"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "Vision 2030 - Enterprise AI Workspace.txt"
+    status: proposed
+    sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    bytes: 0
+    last_commit: "f819fc7f9107aa2dfac4ed105f5f7d16e1959918"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "docs/architecture.md"
+    status: proposed
+    sha256: "285741a17e08d8279c8658fba86b9a700dc7b44ac49d11f63a889a03f60003e8"
+    bytes: 17932
+    last_commit: "c5a2818eeda8ef274c1660d40af5daf9c429f4ce"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "docs/cli.md"
+    status: proposed
+    sha256: "e57ec306ab9a30e9a65b2bec47d221ab5e1c1c01dfa1de1604da0db1ac035910"
+    bytes: 45989
+    last_commit: "16830dd709a79a243fb1f21ebd1ca8996940d42a"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "docs/workspace-registry.md"
+    status: proposed
+    sha256: "86f0b4d139901b60405d6528107a43609035b9542ced3b3e9f6cfa020a5bb108"
+    bytes: 5285
+    last_commit: "73e69eaa4200679a868f3ac58104b990f344dd83"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "handoff/B3_SEED_VERIFICATION_CONTRACT.md"
+    status: proposed
+    sha256: "dee86c8289780c0ada3e78fe52cf592b6c759587c4d896190cf11cf0be8ba83c"
+    bytes: 3465
+    last_commit: "74299c204042985cd38e6339e23bce1be108c08a"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "handoff/CANONICAL_SOURCE_MAP.md"
+    status: proposed
+    sha256: "1233fdc4dab037b83418479486cfda8b656a348136f5337fb73f89e470849da7"
+    bytes: 4268
+    last_commit: "74299c204042985cd38e6339e23bce1be108c08a"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "handoff/CLAUDE_CODE_IMPORT_INSTRUCTIONS.md"
+    status: proposed
+    sha256: "5703cb13a42981480a0c00c0c0cb86f707d60aecad0425d9d95a14fc3b8aa362"
+    bytes: 3149
+    last_commit: "74299c204042985cd38e6339e23bce1be108c08a"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "handoff/CR1_SPEC_AND_SEED_STATUS.md"
+    status: proposed
+    sha256: "14152fad3be76a5142c68c90f72e2674379a73f26e86c76706a6ea68a940d8bb"
+    bytes: 3078
+    last_commit: "74299c204042985cd38e6339e23bce1be108c08a"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "handoff/INTEGRITY_CHECKS.md"
+    status: proposed
+    sha256: "78f213f341e0447caf4c8b3de174af312df8d6d3e2363ab1f77841b3b7f39ebe"
+    bytes: 4541
+    last_commit: "74299c204042985cd38e6339e23bce1be108c08a"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "handoff/PROJECTOS_TO_AIW_HANDOFF_GUIDE.md"
+    status: proposed
+    sha256: "e51ba9a8a958e2d8e2f954c92137cda9c589c4e6cd125a00b6ff7f548fee14b3"
+    bytes: 7128
+    last_commit: "74299c204042985cd38e6339e23bce1be108c08a"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "handoff/PROJECTOS_TO_AIW_HANDOFF_MANIFEST.yaml"
+    status: proposed
+    sha256: "f331e7119d19e9aa4c7194096cbf9e40c1c46303ac096d8e005f0bd519358ace"
+    bytes: 10231
+    last_commit: "74299c204042985cd38e6339e23bce1be108c08a"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "handoff/TARGET_REPOSITORY_LAYOUT.md"
+    status: proposed
+    sha256: "1b69e3008a38c51d323c476b064346185ed0d8c1e0dcafeaeb237286fcb2c56f"
+    bytes: 4558
+    last_commit: "74299c204042985cd38e6339e23bce1be108c08a"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "packs/rapid-build/ASSIGNMENT_GENERATOR.md"
+    status: proposed
+    sha256: "be3cbae01b442dba9a1350b91dd8dd3ee920721410435e190925775332fe671a"
+    bytes: 925
+    last_commit: "ceda197ad80054d338b6e7efd63ca1d40b8f1b08"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "packs/rapid-build/CLAUDE_CODE_ASSIGNMENT.md"
+    status: proposed
+    sha256: "47fd04a419fea47b9e7a2db2a2d273431c138303396e5318b90047e8d74ebe1f"
+    bytes: 1017
+    last_commit: "ceda197ad80054d338b6e7efd63ca1d40b8f1b08"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+  - path: "policies/policies.yaml"
+    status: proposed
+    sha256: "3201c82480cd8f6460889ea46be13c23b81bcbeb604eed42e54a246ffb2793a5"
+    bytes: 2160
+    last_commit: "8ce7f651954816ff3802ad676ef2b88fbf96d114"
+    supersedes: null
+    superseded_by: null
+    notes: "no self-declared status in document; classified proposed per B3 (not inferred)"
+
+untracked_files:
+  []   # checked — none
+
+# MANDATORY DISCLOSURE — gitignored paths holding governance/policy/architecture/
+# decision content. .projectos/ was checked and holds no governance content after
+# D-002 (policy moved to tracked /policies/); it is omitted as runtime-only.
+# reviewable is 'unknown' by founder decision (whether Chat may see these out-of-band).
+ignored_content_paths:
+  - path: "Projects/"
+    ignored_by: "/Projects/"
+    content_type: architecture
+    reason_excluded: "EduOS-AI project docs (docs/spec/*, PROJECT_SOURCE.md, FOUNDER_LEARNING.md, PROJECT_BOOTSTRAP.md, PRODUCT_PHILOSOPHY.md.txt); a separate product tracked in its own repo C:/EduOS-AI. Generated project.yaml files are machine state."
+    reviewable: unknown
+  - path: "Workspace.yaml"
+    ignored_by: "/Workspace.yaml"
+    content_type: decision
+    reason_excluded: "workspace registration manifest (which projects/packs are registered); generated local config that also encodes registration choices."
+    reviewable: unknown
+
+counts:
+  canonical: 5
+  proposed: 70
+  blocked: 0
+  superseded: 0
+  untracked: 0
+  ignored_content: 2
