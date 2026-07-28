@@ -1,0 +1,45 @@
+evidence_index_version: 1
+assignment_id: POS-CHAT-BRIDGE-REVIEW-002
+package_parent_sha: "9ae651ed0ac727caf993e99a9c24a74d89ec8b16"
+hash_input: git-blob-bytes
+included:
+  - path: "docs/workspace-registry.md"
+    source_commit_sha: "73e69eaa4200679a868f3ac58104b990f344dd83"
+    git_blob_sha256: "c3abfa3ec88472c353db5c197f250abbd4e8c4c8b5166790017bcd20266992da"
+    document_status: proposed
+    reason_for_inclusion: "Sole evidence for the TradeOS registration decisions (FD-003/FD-004) and the kernel-hold blocker (BLK-002)."
+  - path: ".gitignore"
+    source_commit_sha: "ceda197ad80054d338b6e7efd63ca1d40b8f1b08"
+    git_blob_sha256: "dc5f616908645bf0883268bf8bb29717a38b583cd4e402a18af00e8ce370aaca"
+    document_status: not-applicable
+    reason_for_inclusion: "Evidence for FD-001 (packs tracked) and FD-002 (.projectos split); defines ignore scope for ignored_content_paths."
+  - path: "policies/policies.yaml"
+    source_commit_sha: "8ce7f651954816ff3802ad676ef2b88fbf96d114"
+    git_blob_sha256: "5c4af21a05ce1ba61f64b4aea0bc5b13aeb37c4b3ad67cdb21329ae752677103"
+    document_status: proposed
+    reason_for_inclusion: "Evidence for FD-002; the workflow-mode policy (FAST/REVIEWED/GOVERNED) content."
+  - path: "POS-COW-CHAT-BRIDGE-001-SPEC.md"
+    source_commit_sha: "1e9bf2fe091d57844d8f33fb618445671abf4cb6"
+    git_blob_sha256: "3052b0aee35f9fd08072d5dd9178a42be0242057184366481e93c4c244ad329c"
+    document_status: canonical
+    reason_for_inclusion: "The bridge build specification the package must conform to."
+  - path: "projectos-handoff/POS-CHAT-BRIDGE-REVIEW-002/REVIEW_QUESTIONS.md"
+    source_commit_sha: "9ae651ed0ac727caf993e99a9c24a74d89ec8b16"
+    git_blob_sha256: "2ee6515f3643cd2522054965e5a015a0cc27ed4a354447bf5b5821d605f7eaea"
+    document_status: not-applicable
+    reason_for_inclusion: "The ten committed REVIEW-002 questions; review_question_hash source."
+  - path: "POS-CHAT-BRIDGE-REVIEW-001-OUTPUT.md"
+    source_commit_sha: "(uncommitted at parent; introduced by package_commit_sha)"
+    git_blob_sha256: "c17ef98643bdf40deb1d52b2d1c2eff90f4aa64ecae4b473f0f977d5548cd1e3"
+    document_status: advisory
+    reason_for_inclusion: "REVIEW-001 advisory output; ADVISORY ONLY, NOT admissible governance evidence (basis for this correction)."
+unavailable:
+  - item: "PO-10 approval evidence"
+    status: UNAVAILABLE
+    detail: "No signed or registered founder approval exists in the repository; PO-10/PO-11 therefore proposed (C-2)."
+  - item: "CI evidence"
+    status: UNAVAILABLE
+    detail: "No .github/workflows/ present; automated completion evidence unavailable (REVIEW-001 F-07)."
+  - item: "Test run output"
+    status: UNAVAILABLE
+    detail: "tests/ present (37 tracked files); the 939-pass figure is Reported, not a committed run artefact."
