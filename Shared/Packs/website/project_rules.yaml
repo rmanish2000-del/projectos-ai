@@ -1,0 +1,4 @@
+# website: project rules — schema v1.
+schema_version: 1
+pack: website
+rules: []

@@ -1,0 +1,15 @@
+# rapid-build assignment template — kernel issues id, state, origin.
+title: Build the defined task
+work_type: implementation
+executor: code
+objective: >
+  Implement the task defined by the preceding assignment, and commit it.
+stopping_point: Stop after the change is committed.
+acceptance_criteria:
+  - id: AC-1
+    statement: The build is committed.
+    verify:
+      type: commit_exists
+      message_pattern: "(?i)build|implement"
+evidence_required:
+  - commit
