@@ -1,0 +1,7 @@
+# Sample project registration — schema v1.
+schema_version: 1
+project:
+  id: example-project
+  name: ExampleProject
+  description: A sample project registered in the workspace.
+pack: rapid-build

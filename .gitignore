@@ -19,4 +19,10 @@ htmlcov/
 # too — but policy *rules* are tracked under /policies/ (POS-CC-CORPUS-FIX-004 D-002).
 /.projectos/
 /Workspace.yaml
-/Projects/
+# Project registrations (project.yaml) are the workspace REGISTRY, not runtime
+# state: a registration correction that exists only on one disk is the SR-1
+# exposure class. Registry tracked, everything else under /Projects/ ignored
+# (THREE-KERNELS-RECONCILE, founder 'go' 2026-08-13).
+/Projects/**
+!/Projects/*/
+!/Projects/*/project.yaml
