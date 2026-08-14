@@ -146,6 +146,7 @@ Examples: `CAP-evidence-verify@1.2` · `DEC-0001` · `EVT-assignment-verified` �
 | `POS-P<n>` | Platform phase | Kernel/platform |
 | `<PRD>-P<n>` | Product phase | Product |
 | `FAST/REVIEWED/GOVERNED` | Workflow modes | Methodology/PO-4 |
+| `Verified/Reported/Assumed/Blocked` | Evidence grades (closed set) | PO-9 §5.1 |
 | Lanes `A/B/C/D/F` | Execution lanes | Methodology |
 
 ## 20. Versioning Rules
@@ -203,6 +204,20 @@ The authoritative name for each core concept. (Status: ✅ canonical · ⚠ prov
 | Experience System | — | ? | End-to-end product experience layer | ? | ⚠ needs source |
 | Enterprise Experience System | — | HQ? | Enterprise-facing experience offering | HQ? | ⚠ needs source |
 | Encounter Intelligence | INT | Product | A product-scope Intelligence (rename to `<Product> Intelligence`) | Product | ⚠ needs source |
+
+## 5.1 Evidence Grades (normative)
+
+**This is the single normative definition of the evidence grades for the whole ecosystem.** The set is closed — four grades, no others:
+
+> Every claim above is one of: Verified (read from repo/git), Reported, Assumed, Blocked.
+
+A claim is **Verified** unless explicitly tagged otherwise inline. "Unconfirmed" is not a grade; it maps to **Assumed**.
+
+**Provenance.** These grades were defined in `POS-COW-CHAT-BRIDGE-001-SPEC.md` §"Evidence classification" and are moved here unchanged by assignment PO9-GRADE-PROMOTION (2026-08-14) — a relocation to the owning document, not a redefinition (§20: no silent change of meaning). The bridge spec now cites this section instead of defining. A standing fleet rule (INTEL-INTEGRATION, 2026-08-14) depends on this vocabulary, which is why it belongs in the standard rather than in a handoff document.
+
+**Carried across as-is.** Only *Verified* carries a definition in the source wording; *Reported*, *Assumed* and *Blocked* are named but not glossed. That gap is preserved deliberately rather than filled here — writing three new definitions would be a rewrite, not a move. Glossing them is a separate proposal (Appendix B).
+
+**Do not confuse with `EvidenceClass`** (kernel, Foundation Spec §8.1 — `commit`, `pr`, `ci_run`, `test_report`, `artifact`, `approval`). That is *what kind of evidence exists*; an evidence grade is *how well a claim is supported*. Two concepts, two vocabularies, similar words — §2.12 (no homographs) applies: prefer "evidence **grade**" for this set and "evidence **class**" for the kernel's.
 
 ## 14. Platform Naming
 

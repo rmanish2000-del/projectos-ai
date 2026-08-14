@@ -73,7 +73,9 @@ for the review requested in CHAT_REVIEW_REQUEST.md.
 - Tests: <verified pass / none present / not run — state which>
 
 ## Evidence classification
-Every claim above is one of: Verified (read from repo/git), Reported, Assumed, Blocked.
+Every claim above is one of: Verified (read from repo/git), Reported, Assumed, Blocked
+— defined normatively in PO-9_ECOSYSTEM_LANGUAGE_STANDARD.md §5.1. This line cites; it
+no longer defines (superseded by PO9-GRADE-PROMOTION, 2026-08-14).
 Claims in this file are **Verified** unless explicitly tagged otherwise inline.
 ```
 
