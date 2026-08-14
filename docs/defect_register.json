@@ -1,0 +1,38 @@
+{
+  "_about": "Defect classes for this repository, read by projectos.infrastructure.defect_sweep. Declarations (name, source, instances, enforcement_test) are founder-owned and hand-written; the sweep only ever adds an observed 'last_sweep' block. A class is closed when its enforcement test makes a NEW instance fail the build.",
+  "classes": {
+    "DC-1": {
+      "name": "A value believed rather than observed",
+      "description": "A claim accepted because something reported it, rather than because it was read from the thing itself. The general form of every trust-the-report defect: an exit code trusted instead of a parsed summary, a seat tag trusted instead of a repo root, a clock trusted instead of an anchored instant.",
+      "source": "TradeOS observed-fact rule (DC-1); extended to fleet time by assignment FLEET-CLOCK, 2026-08-14",
+      "enforcement_test": "tests/test_fleet_clock.py",
+      "instances": [
+        {
+          "id": "DC-1/time/warrant-5h30m",
+          "observed": "2026-08-13",
+          "who": "WARRANT seat",
+          "what": "`TZ='Asia/Kolkata' date` returned GMT with no tzdata present and no error, putting reported times 5.5 hours out.",
+          "why_it_is_this_class": "A timezone was requested and the answer believed; the offset was never checked against anything.",
+          "now_caught_by": "now_ist() converts by a fixed +05:30 offset and never depends on a named-zone lookup; tzdata is consulted only as a cross-check that raises on disagreement."
+        },
+        {
+          "id": "DC-1/time/chat-64m",
+          "observed": "2026-08-14",
+          "who": "Chat (reported by COWORK)",
+          "what": "A filename time stamp differed from the file's actual Drive write time by 64 minutes.",
+          "why_it_is_this_class": "The stamp recorded when the writer thought it was, not when the write was observed to happen.",
+          "now_caught_by": "check_stamp_skew() measures a stamp against the observed write time and reports the difference as a defect above a declared tolerance."
+        },
+        {
+          "id": "DC-1/time/chat-assumed-stamps",
+          "observed": "2026-08-14",
+          "who": "Chat",
+          "what": "Filenames stamped three times in one day from an assumed clock rather than a read one.",
+          "why_it_is_this_class": "Same class as the other two: the time was supplied from belief. It sorts, so it corrupts 'oldest file first' ordering silently.",
+          "now_caught_by": "stamp_for_filename() is the single way to produce a stamp and raises rather than returning a plausible time when the clock cannot be established."
+        }
+      ],
+      "open_question": "The skew tolerance is PROPOSED at 120s and is deliberately not in force: a tolerance is a parameter value (ESCALATE-ALWAYS), so check_stamp_skew requires it to be passed explicitly and has no default."
+    }
+  }
+}
