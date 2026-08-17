@@ -40,24 +40,43 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 from projectos.domain.errors import InvariantViolation
 
 #: The stamp line a legitimate assignment carries (conventionally last).
+#: The value is versioned from day one: ``AUTH: HMAC-SHA256 k1:<hex>``.
+#: A fleet living on one eternal key must not be a thing we built on purpose.
 AUTH_PREFIX = "AUTH: HMAC-SHA256 "
 
-#: Environment variable holding the key (wins over the key file).
+#: Environment variable holding the keyring (wins over the key file).
+#: Format: comma-separated ``id:secret`` entries, e.g. ``k1:abc...,k2:def...``.
 KEY_ENV_VAR = "PROJECTOS_INBOX_KEY"
 
-#: Fallback key file — deliberately under the user profile, never under a
-#: synced folder and never in a repository.
+#: Fallback keyring file — deliberately under the user profile, never under a
+#: synced folder and never in a repository. One ``id:secret`` entry per line;
+#: blank lines and ``#`` comments ignored. THE LAST ENTRY IS THE SIGNING KEY —
+#: rotation appends the new key, so "newest last" is the written convention.
 KEY_FILE = Path.home() / ".projectos" / "inbox.key"
 
 VERDICT_AUTHENTIC = "AUTHENTIC"
 VERDICT_REFUSED = "REFUSED"
+
+#: Rotation, as a procedure rather than a crisis (amendment item 2):
+#:   1. Founder generates k2 and APPENDS ``k2:<hex>`` to every seat's keyring
+#:      (env var or key file). k1 stays listed.
+#:   2. New assignments are signed with k2 automatically — the signing key is
+#:      the last-listed entry, and k2 now is.
+#:   3. Seats accept BOTH: verification selects the key by the id carried in
+#:      the stamp, so k1-stamped files still verify while any remain live.
+#:   4. Founder RETIRES k1 by deleting its line — a written act on the keyring,
+#:      after which k1 stamps refuse with the unknown-id reason.
+#: A seat reports WHICH key verified a file: the verdict carries key_id and
+#: report_line() prints it.
 
 
 class KeyUnavailable(InvariantViolation):
@@ -72,32 +91,66 @@ class AuthVerdict:
     path: str
     verdict: str
     reason: str
+    key_id: str | None = None  # which key verified (or was named by) the stamp
 
     @property
     def authentic(self) -> bool:
         return self.verdict == VERDICT_AUTHENTIC
 
     def report_line(self) -> str:
-        return f"{self.verdict}: {Path(self.path).name} — {self.reason}"
+        which = f" [key {self.key_id}]" if self.key_id else ""
+        return f"{self.verdict}{which}: {Path(self.path).name} — {self.reason}"
 
 
-def load_key(*, env: str | None = None, key_file: Path | None = None) -> bytes:
-    """The key, from the environment or the local key file. Absent = raise."""
+def _parse_keyring_entries(entries: list[str], *, source: str) -> dict[str, bytes]:
+    ring: dict[str, bytes] = {}
+    for raw in entries:
+        entry = raw.strip()
+        if not entry or entry.startswith("#"):
+            continue
+        key_id, sep, secret = entry.partition(":")
+        key_id, secret = key_id.strip(), secret.strip()
+        if not sep or not key_id or not secret or any(c.isspace() for c in key_id):
+            raise KeyUnavailable(
+                f"malformed keyring entry in {source}",
+                detail="Each entry is 'id:secret' with a non-empty, space-free id.",
+            )
+        ring[key_id] = secret.encode("utf-8")
+    return ring
+
+
+def load_keyring(*, env: str | None = None, key_file: Path | None = None) -> dict[str, bytes]:
+    """The keyring, from the environment or the local key file. Absent = raise.
+
+    Returns id -> key in listed order; the LAST entry is the signing key.
+    """
     value = env if env is not None else os.environ.get(KEY_ENV_VAR, "")
     if value.strip():
-        return value.strip().encode("utf-8")
+        ring = _parse_keyring_entries(value.split(","), source=KEY_ENV_VAR)
+        if ring:
+            return ring
     source = key_file or KEY_FILE
     if source.exists():
-        content = source.read_text(encoding="utf-8").strip()
-        if content:
-            return content.encode("utf-8")
+        ring = _parse_keyring_entries(
+            source.read_text(encoding="utf-8").splitlines(), source=str(source)
+        )
+        if ring:
+            return ring
     raise KeyUnavailable(
-        "no INBOX signing key is available",
+        "no INBOX signing keyring is available",
         detail=(
-            f"Set {KEY_ENV_VAR} or write {KEY_FILE}. Without the key nothing "
+            f"Set {KEY_ENV_VAR} (comma-separated id:secret) or write {KEY_FILE} "
+            "(one id:secret per line, newest last). Without a keyring nothing "
             "can be verified, and unverifiable is REFUSED, not passed."
         ),
     )
+
+
+def signing_key(keyring: dict[str, bytes]) -> tuple[str, bytes]:
+    """The active signing key: the last-listed entry, by the rotation
+    convention that a new key is appended."""
+    key_id = next(reversed(keyring))
+    return key_id, keyring[key_id]
 
 
 def _canonical_body(text: str) -> tuple[str, str | None]:
@@ -111,7 +164,7 @@ def _canonical_body(text: str) -> tuple[str, str | None]:
     kept: list[str] = []
     for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
         if line.startswith(AUTH_PREFIX) and stamp is None:
-            stamp = line[len(AUTH_PREFIX) :].strip().lower()
+            stamp = line[len(AUTH_PREFIX) :].strip()
             continue
         kept.append(line)
     return "\n".join(kept).strip() + "\n", stamp
@@ -121,15 +174,28 @@ def _mac(body: str, key: bytes) -> str:
     return hmac.new(key, body.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-def sign_text(text: str, key: bytes) -> str:
-    """Return the text with its AUTH stamp appended (replacing any old one)."""
+def sign_text(text: str, keyring: dict[str, bytes], *, key_id: str | None = None) -> str:
+    """Return the text with its versioned AUTH stamp appended (replacing any
+    old one). Signs with the last-listed key unless `key_id` names another."""
     body, _ = _canonical_body(text)
-    return f"{body}{AUTH_PREFIX}{_mac(body, key)}\n"
+    if key_id is None:
+        key_id, key = signing_key(keyring)
+    else:
+        if key_id not in keyring:
+            raise KeyUnavailable(f"cannot sign with unknown key id {key_id!r}")
+        key = keyring[key_id]
+    return f"{body}{AUTH_PREFIX}{key_id}:{_mac(body, key)}\n"
 
 
-def verify_text(text: str, key: bytes, *, name: str = "<text>") -> AuthVerdict:
+def verify_text(text: str, keyring: dict[str, bytes], *, name: str = "<text>") -> AuthVerdict:
     """Decide one file's authenticity. Never raises for content reasons —
-    every content problem is a REFUSED verdict with its reason stated."""
+    every content problem is a REFUSED verdict with its reason stated.
+
+    NO ISSUER BYPASS (amendment item 3): this function sees content and keys,
+    nothing else. There is no filename, author, issuer or folder parameter,
+    so no path can skip verification for a "trusted" source — a Chat-issued
+    assignment authenticates exactly like any other file or not at all.
+    """
     body, stamp = _canonical_body(text)
     if stamp is None:
         return AuthVerdict(
@@ -138,20 +204,92 @@ def verify_text(text: str, key: bytes, *, name: str = "<text>") -> AuthVerdict:
             reason="no AUTH stamp — an unstamped file in the instruction "
             "channel is an arbitrary file",
         )
-    expected = _mac(body, key)
-    if not hmac.compare_digest(stamp, expected):
+    key_id, sep, mac_hex = stamp.partition(":")
+    mac_hex = mac_hex.strip().lower()
+    if not sep or not key_id or not mac_hex:
         return AuthVerdict(
             path=name,
             verdict=VERDICT_REFUSED,
+            reason="stamp carries no key id — the format is "
+            "'AUTH: HMAC-SHA256 <id>:<hex>' and an unversioned stamp is "
+            "not a valid stamp",
+        )
+    key = keyring.get(key_id)
+    if key is None:
+        return AuthVerdict(
+            path=name,
+            verdict=VERDICT_REFUSED,
+            key_id=key_id,
+            reason=f"stamp names key {key_id!r}, which this seat does not "
+            "hold — either a rotation this machine has not received, or a "
+            "forgery",
+        )
+    if not hmac.compare_digest(mac_hex, _mac(body, key)):
+        return AuthVerdict(
+            path=name,
+            verdict=VERDICT_REFUSED,
+            key_id=key_id,
             reason="stamp does not match the content — either the body was "
             "altered after signing or the stamp was not made with the "
             "fleet key",
         )
-    return AuthVerdict(path=name, verdict=VERDICT_AUTHENTIC, reason="stamp verifies")
+    return AuthVerdict(
+        path=name, verdict=VERDICT_AUTHENTIC, key_id=key_id, reason="stamp verifies"
+    )
 
 
-def verify_file(path: Path, key: bytes) -> AuthVerdict:
-    return verify_text(path.read_text(encoding="utf-8"), key, name=str(path))
+def verify_file(path: Path, keyring: dict[str, bytes]) -> AuthVerdict:
+    return verify_text(path.read_text(encoding="utf-8"), keyring, name=str(path))
+
+
+#: Registry key for the transition switch (INBOX-KEY-GENERATION item 4).
+ENFORCEMENT_PARAM = "INBOX-AUTH-ENFORCEMENT"
+
+MODE_TOLERANT = "tolerant"
+MODE_ENFORCING = "enforcing"
+
+
+def resolve_enforcement(registry_path: Path) -> str:
+    """The transition switch: tolerant or enforcing. Founder-flipped only.
+
+    Tolerant is the default — including when the registry or the row is
+    absent — because the failure direction is inverted here: an enforcing
+    seat with no ordered declaration would refuse every legitimate unsigned
+    assignment, which is a seat deciding fleet policy on its own. A
+    DECLARED value that is neither known mode is a config error and raises.
+    """
+    if not registry_path.exists():
+        return MODE_TOLERANT
+    try:
+        declared = json.loads(registry_path.read_text(encoding="utf-8")).get("parameters", {})
+    except json.JSONDecodeError:
+        return MODE_TOLERANT
+    row = declared.get(ENFORCEMENT_PARAM)
+    if row is None:
+        return MODE_TOLERANT
+    value = str(row.get("value", "")).strip().lower()
+    if value not in (MODE_TOLERANT, MODE_ENFORCING):
+        raise KeyUnavailable(
+            f"{ENFORCEMENT_PARAM} declares {row.get('value')!r}, which is neither "
+            f"{MODE_TOLERANT!r} nor {MODE_ENFORCING!r}"
+        )
+    return value
+
+
+def should_act(verdict: AuthVerdict, mode: str) -> bool:
+    """May a seat act on this file, given the transition mode?
+
+    The asymmetry is deliberate: an ABSENT stamp in tolerant mode is a
+    legitimate pre-adoption file and may be acted on (the absence is still
+    reported); a PRESENT-BUT-WRONG stamp is refused in EVERY mode, because a
+    stamp that does not verify is evidence of tampering or a wrong key, and
+    no transition excuses that.
+    """
+    if verdict.authentic:
+        return True
+    if mode == MODE_ENFORCING:
+        return False
+    return "no AUTH stamp" in verdict.reason
 
 
 def refuse_and_report(verdict: AuthVerdict, reports_dir: Path, *, stamp: str) -> Path | None:
@@ -169,3 +307,44 @@ def refuse_and_report(verdict: AuthVerdict, reports_dir: Path, *, stamp: str) ->
     with target.open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(verdict.report_line() + "\n")
     return target
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`python -m projectos.infrastructure.inbox_auth {sign|verify} FILE`.
+
+    sign   — stamp FILE in place with the fleet key. Prints one status line;
+             NEVER the key.
+    verify — print the verdict line and the transition mode's decision.
+             Exit 0 when the seat may act, 2 when it must refuse.
+    """
+    args = list(sys.argv[1:] if argv is None else argv)
+    if len(args) != 2 or args[0] not in ("sign", "verify"):
+        print("usage: python -m projectos.infrastructure.inbox_auth {sign|verify} FILE")
+        return 2
+    command, target = args[0], Path(args[1])
+    try:
+        keyring = load_keyring()
+    except KeyUnavailable as exc:
+        print(f"BLOCKED: {exc.message}")
+        return 2
+
+    if command == "sign":
+        signed = sign_text(target.read_text(encoding="utf-8"), keyring)
+        target.write_text(signed, encoding="utf-8")
+        print(f"signed: {target.name} [key {signing_key(keyring)[0]}]")
+        return 0
+
+    verdict = verify_file(target, keyring)
+    mode = resolve_enforcement(Path(PARAMETER_REGISTRY_FILE))
+    act = should_act(verdict, mode)
+    print(verdict.report_line())
+    print(f"mode={mode} -> {'ACT' if act else 'REFUSE'}")
+    return 0 if act else 2
+
+
+#: The registry the CLI consults for the transition switch, relative to the
+#: working directory (the seat's repo root).
+PARAMETER_REGISTRY_FILE = "docs/parameter_registry.json"
+
+if __name__ == "__main__":  # pragma: no cover - exercised via tests calling main()
+    raise SystemExit(main())
