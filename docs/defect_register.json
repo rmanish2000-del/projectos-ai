@@ -16,23 +16,18 @@
           "now_caught_by": "now_ist() converts by a fixed +05:30 offset and never depends on a named-zone lookup; tzdata is consulted only as a cross-check that raises on disagreement."
         },
         {
-          "id": "DC-1/time/chat-64m",
-          "observed": "2026-08-14",
-          "who": "Chat (reported by COWORK)",
-          "what": "A filename time stamp differed from the file's actual Drive write time by 64 minutes.",
-          "why_it_is_this_class": "The stamp recorded when the writer thought it was, not when the write was observed to happen.",
-          "now_caught_by": "check_stamp_skew() measures a stamp against the observed write time and reports the difference as a defect above a declared tolerance."
-        },
-        {
           "id": "DC-1/time/chat-assumed-stamps",
           "observed": "2026-08-14",
           "who": "Chat",
-          "what": "Filenames stamped three times in one day from an assumed clock rather than a read one.",
-          "why_it_is_this_class": "Same class as the other two: the time was supplied from belief. It sorts, so it corrupts 'oldest file first' ordering silently.",
-          "now_caught_by": "stamp_for_filename() is the single way to produce a stamp and raises rather than returning a plausible time when the clock cannot be established."
+          "what": "Chat stamped filenames from an assumed time rather than a read one on at least three occasions. MAGNITUDE UNKNOWN.",
+          "magnitude": "UNVERIFIED",
+          "why_magnitude_is_unverified": "A 64-minute figure was originally attributed to Chat's clock error, reported by COWORK against the local mirror's mtime. Measurement (PROJECTOS, 2026-08-14) showed that for a Drive-synced file the local mtime is the SYNC write, not the authoring moment, so that figure is part clock error and part sync latency and the two are not separable from a seat. Chat amended its own entry rather than let the number stand: being wrong about the size of your own error is still being wrong. The occurrences are real; only the magnitude is unknown.",
+          "why_it_is_this_class": "The time was supplied from belief rather than read. It sorts, so it corrupts 'oldest file first' ordering silently.",
+          "now_caught_by": "stamp_for_filename() is the single way to produce a stamp and raises rather than returning a plausible time when the clock cannot be established. Magnitude for synced files is measurable only against Drive's server-side timestamp, which is the Chat-owned half of the split check."
         }
       ],
-      "open_question": "The skew tolerance is PROPOSED at 120s and is deliberately not in force: a tolerance is a parameter value (ESCALATE-ALWAYS), so check_stamp_skew requires it to be passed explicitly and has no default."
+      "tolerance": "DECLARED by the founder on 2026-08-14 at 120s on the resolution argument — see docs/parameter_registry.json (FLEET-CLOCK-SKEW-TOLERANCE). Code still has no default: it resolves the value and fails closed when absent.",
+      "check_ownership": "Split by anchor, ruled 2026-08-14. Locally-written files: PROJECTOS, via check_local_file against local mtime (the authoring moment here). Synced files: CHAT, against Drive's server-side createdTime/modifiedTime — this seat cannot see that fact and refuses the check rather than measuring sync latency and calling it clock error."
     }
   }
 }

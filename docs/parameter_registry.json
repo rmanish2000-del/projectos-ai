@@ -1,0 +1,36 @@
+{
+  "_about": "Founder-declared parameter values. A value here is a POLICY, chosen for a stated reason; it is not a default, not a tuning knob, and not fitted to data. Code resolves values from this file and FAILS CLOSED when one is absent — an invented parameter is an ungoverned one. Declaring or changing a value is ESCALATE-ALWAYS (projectos.domain.tiers): a founder act, recorded here with its reason in the founder's own words.",
+  "_on_evidence": "Some rows carry `evidence_consulted`. That is measurement which INFORMED the discussion, never the basis for the number. A value fitted to an observed distribution is a fitted parameter wearing a policy label, and this register exists to stop exactly that. Where a row has both, `basis` states which argument actually chose the value.",
+  "parameters": {
+    "FLEET-CLOCK-SKEW-TOLERANCE": {
+      "value": 120,
+      "unit": "seconds",
+      "status": "policy_declared",
+      "declared_by": "founder",
+      "declared_on": "2026-08-14",
+      "recorded_by": "PROJECTOS seat, assignment SKEW-TOLERANCE-AND-ANCHOR",
+      "reason": "One minute is the resolution limit of the stamp itself, so two minutes gives it one minute of slack for a single delay. Beyond that it is clock error, not rounding.",
+      "basis": "The resolution argument above, and only that. The value follows from what a minute-resolution stamp can express, not from how the observed files happened to be distributed.",
+      "evidence_consulted": {
+        "note": "Consulted, explicitly NOT the basis. The measurement's only load-bearing contribution was confirming that the 60s floor is real.",
+        "sample": "120 files under G:/My Drive/AGENT-REPORTS, measured 2026-08-14",
+        "median_skew_seconds": 53,
+        "minimum_skew_seconds": 1,
+        "floor_seconds": 60,
+        "over_120s": "30 of 120",
+        "maximum_skew_seconds": 22731,
+        "caveat": "The large values in this sample are Drive-synced files whose local mtime is the sync write, not the authoring moment. This is why the check is split by anchor (see scope)."
+      },
+      "scope": {
+        "applies_to": "Locally-written files, where the local mtime IS the authoring moment (measured ~1s skew).",
+        "checked_by": "PROJECTOS — projectos.infrastructure.fleet_clock.check_local_file",
+        "synced_files": {
+          "owner": "Chat",
+          "status": "CHAT-OWNED, live",
+          "reason": "A synced file's local mtime is the sync write, not the authoring moment, so this seat cannot see the fact it would need to check. Chat reads Drive's own createdTime/modifiedTime through the connector and runs the stamp-versus-server-time comparison each sweep. Recorded as owned, NOT as unimplemented and NOT as absent: a check assigned to whoever can actually see the fact is not a gap; a check assigned to someone who cannot see it is.",
+          "ruled_on": "2026-08-14, assignment SKEW-TOLERANCE-AND-ANCHOR"
+        }
+      }
+    }
+  }
+}

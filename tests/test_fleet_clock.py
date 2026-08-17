@@ -6,26 +6,36 @@ must RAISE, because a wrong timestamp sorts and a missing one does not.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from projectos.domain.errors import InvariantViolation
+from projectos.infrastructure import fleet_clock
 from projectos.infrastructure.fleet_clock import (
     CLOCK_FLOOR,
     IST,
     IST_OFFSET,
-    PROPOSED_SKEW_TOLERANCE_SECONDS,
+    PARAMETER_REGISTRY_PATH,
     STAMP_RESOLUTION_SECONDS,
+    TOLERANCE_PARAM,
     ClockUnavailable,
+    NotThisSeatsCheck,
+    ParameterBlocked,
+    check_local_file,
     check_stamp_skew,
     now_ist,
     parse_filename_stamp,
+    resolve_tolerance,
     stamp_for_filename,
     stamp_for_report,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # A known instant: 2026-08-14 06:40 UTC is 12:10 IST the same day.
 KNOWN_UTC = datetime(2026, 8, 14, 6, 40, tzinfo=UTC)
@@ -187,6 +197,12 @@ class TestSkewCheck:
                 "2026-08-14_1210", datetime(2026, 8, 14, 12, 10, tzinfo=IST), tolerance_seconds=30
             )
 
+    def test_declared_tolerance_is_not_a_module_default(self) -> None:
+        # The founder declared 120s, but the module still holds no default:
+        # the value lives in the registry and is resolved, never assumed.
+        assert not hasattr(fleet_clock, "DEFAULT_TOLERANCE_SECONDS")
+        assert fleet_clock.TOLERANCE_PARAM == "FLEET-CLOCK-SKEW-TOLERANCE"
+
     def test_tolerance_is_required_not_defaulted(self) -> None:
         # A tolerance is a parameter value (ESCALATE-ALWAYS); this module will
         # not invent one, so the argument is keyword-only and mandatory.
@@ -195,8 +211,99 @@ class TestSkewCheck:
                 "2026-08-14_1210", datetime(2026, 8, 14, 12, 10, tzinfo=IST)
             )
 
-    def test_proposed_tolerance_is_a_proposal_not_a_default(self) -> None:
-        assert PROPOSED_SKEW_TOLERANCE_SECONDS > STAMP_RESOLUTION_SECONDS
+    def test_the_declared_tolerance_clears_the_resolution_floor(self) -> None:
+        # The founder's reason is the resolution argument: one minute is what
+        # the stamp can express, so the value must leave slack above it.
+        assert resolve_tolerance(REPO_ROOT / PARAMETER_REGISTRY_PATH) > STAMP_RESOLUTION_SECONDS
 
     def test_parse_returns_ist(self) -> None:
         assert parse_filename_stamp("2026-08-14_1210").utcoffset() == IST_OFFSET
+
+
+class TestDeclaredTolerance:
+    """The value is the founder's policy, resolved — never this module's guess."""
+
+    def test_resolves_the_declared_value_from_the_shipped_registry(self) -> None:
+        assert resolve_tolerance(REPO_ROOT / PARAMETER_REGISTRY_PATH) == 120
+
+    def test_the_shipped_row_is_policy_declared_with_a_reason(self) -> None:
+        row = json.loads((REPO_ROOT / PARAMETER_REGISTRY_PATH).read_text(encoding="utf-8"))[
+            "parameters"
+        ][TOLERANCE_PARAM]
+        assert row["status"] == "policy_declared"
+        assert row["declared_by"] == "founder"
+        assert row["reason"].strip()
+        # The measurement is evidence consulted, never the basis - a value
+        # fitted to a distribution is a fitted parameter wearing a policy label.
+        assert "resolution" in row["basis"].lower()
+        assert "not the basis" in row["evidence_consulted"]["note"].lower()
+
+    def test_missing_registry_is_blocked_not_defaulted(self, tmp_path: Path) -> None:
+        with pytest.raises(ParameterBlocked):
+            resolve_tolerance(tmp_path / "absent.json")
+
+    def test_missing_key_is_blocked(self, tmp_path: Path) -> None:
+        path = tmp_path / "reg.json"
+        path.write_text(json.dumps({"parameters": {}}), encoding="utf-8")
+        with pytest.raises(ParameterBlocked):
+            resolve_tolerance(path)
+
+    def test_non_integer_declaration_is_blocked(self, tmp_path: Path) -> None:
+        path = tmp_path / "reg.json"
+        path.write_text(
+            json.dumps({"parameters": {TOLERANCE_PARAM: {"value": "soonish"}}}), encoding="utf-8"
+        )
+        with pytest.raises(ParameterBlocked):
+            resolve_tolerance(path)
+
+    def test_unreadable_registry_is_blocked(self, tmp_path: Path) -> None:
+        path = tmp_path / "reg.json"
+        path.write_text("{ not json", encoding="utf-8")
+        with pytest.raises(ParameterBlocked):
+            resolve_tolerance(path)
+
+
+class TestSplitByAnchor:
+    """Local files are this seat's to check. Synced files are not."""
+
+    def test_locally_written_file_is_checked(self, tmp_path: Path) -> None:
+        target = tmp_path / f"{stamp_for_filename()}_PROJECTOS_EXAMPLE.md"
+        target.write_text("written now", encoding="utf-8")
+        check = check_local_file(target, tolerance_seconds=120)
+        # A file this machine just wrote must be within the declared tolerance;
+        # if this ever fails, the local clock really has drifted.
+        assert check.within_tolerance
+
+    def test_a_stale_stamp_on_a_local_file_is_caught(self, tmp_path: Path) -> None:
+        target = tmp_path / "2026-08-14_1210_PROJECTOS_STALE.md"
+        target.write_text("stamped long before it was written", encoding="utf-8")
+        check = check_local_file(target, tolerance_seconds=120)
+        assert not check.within_tolerance
+
+    def test_synced_file_is_refused_not_measured(self, tmp_path: Path) -> None:
+        # The ruling: this seat cannot see the authoring moment for a synced
+        # file, so it refuses rather than reporting sync latency as clock error.
+        synced_root = tmp_path / "My Drive"
+        (synced_root / "AGENT-REPORTS").mkdir(parents=True)
+        target = synced_root / "AGENT-REPORTS" / "2026-08-14_1210_ALL_THING.md"
+        target.write_text("synced here by the client", encoding="utf-8")
+        with pytest.raises(NotThisSeatsCheck):
+            check_local_file(target, tolerance_seconds=120, synced_roots=(synced_root,))
+
+    def test_refusal_names_the_owner_of_the_other_half(self, tmp_path: Path) -> None:
+        synced_root = tmp_path / "synced"
+        synced_root.mkdir()
+        target = synced_root / "2026-08-14_1210_ALL_THING.md"
+        target.write_text("x", encoding="utf-8")
+        with pytest.raises(NotThisSeatsCheck) as caught:
+            check_local_file(target, tolerance_seconds=120, synced_roots=(synced_root,))
+        assert "Chat-owned" in caught.value.render()
+
+    def test_a_file_outside_the_synced_roots_is_still_checked(self, tmp_path: Path) -> None:
+        synced_root = tmp_path / "synced"
+        synced_root.mkdir()
+        elsewhere = tmp_path / f"{stamp_for_filename()}_PROJECTOS_LOCAL.md"
+        elsewhere.write_text("local", encoding="utf-8")
+        assert check_local_file(
+            elsewhere, tolerance_seconds=120, synced_roots=(synced_root,)
+        ).within_tolerance

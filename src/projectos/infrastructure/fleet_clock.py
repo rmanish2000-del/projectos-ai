@@ -30,9 +30,11 @@ Usage — one function, no options, no timezone argument::
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import json
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone
+from pathlib import Path
 
 from projectos.domain.errors import InvariantViolation
 
@@ -51,19 +53,39 @@ CLOCK_FLOOR = datetime(2025, 1, 1, tzinfo=UTC)
 #: measuring truncation, not skew.
 STAMP_RESOLUTION_SECONDS = 60
 
-#: PROPOSED, NOT IN FORCE. A tolerance is a parameter value, and parameter
-#: values are ESCALATE-ALWAYS (domain.tiers) — a founder act, not this module's
-#: to set. Nothing here defaults to it: `check_stamp_skew` requires the caller
-#: to pass a tolerance explicitly, so this constant is a recommendation you have
-#: to reach for deliberately. See the FLEET-CLOCK report for the reasoning.
-PROPOSED_SKEW_TOLERANCE_SECONDS = 120
+#: The registry key for the skew tolerance. DECLARED by the founder on
+#: 2026-08-14 at 120s, on the resolution argument — see docs/parameter_registry.json.
+#: There is still no default in this module: the value is RESOLVED from the
+#: registry and absence FAILS CLOSED, because an invented parameter is an
+#: ungoverned one.
+TOLERANCE_PARAM = "FLEET-CLOCK-SKEW-TOLERANCE"
+
+#: Default location of the founder's parameter registry, relative to a repo root.
+PARAMETER_REGISTRY_PATH = "docs/parameter_registry.json"
 
 FILENAME_STAMP_FORMAT = "%Y-%m-%d_%H%M"
 REPORT_STAMP_FORMAT = "%Y-%m-%d %H:%M"
 
+#: A rendered stamp, used only for its length when slicing one off a filename.
+FILENAME_STAMP_SAMPLE = "2026-08-14_1325"
+
 
 class ClockUnavailable(InvariantViolation):
     """The time could not be established. Never degrades into a guess."""
+
+
+class ParameterBlocked(InvariantViolation):
+    """A declared parameter has no declaration. No default exists to fall back on."""
+
+
+class NotThisSeatsCheck(InvariantViolation):
+    """The fact this check needs is not visible from here.
+
+    Raised for synced files: their local mtime is the sync write, not the
+    authoring moment, so checking them here would compare a stamp against the
+    wrong instant and report sync latency as clock error. That check is
+    Chat-owned, against Drive's server-side timestamp.
+    """
 
 
 def _system_utc() -> datetime:
@@ -200,3 +222,69 @@ def check_stamp_skew(stamp: str, written_at: datetime, *, tolerance_seconds: int
         tolerance_seconds=tolerance_seconds,
         within_tolerance=skew <= tolerance_seconds,
     )
+
+
+def resolve_tolerance(registry_path: Path) -> int:
+    """Read the declared skew tolerance. Absent means BLOCKED, never defaulted.
+
+    The value is the founder's policy, not this module's guess, so a missing
+    registry, a missing key, or a non-integer value all raise rather than
+    resolving to something plausible.
+    """
+    if not registry_path.exists():
+        raise ParameterBlocked(
+            f"{TOLERANCE_PARAM} is BLOCKED: no parameter registry at {registry_path}",
+            detail="A check with an invented tolerance is a check with no tolerance.",
+        )
+    try:
+        declared = json.loads(registry_path.read_text(encoding="utf-8")).get("parameters", {})
+    except json.JSONDecodeError as exc:
+        raise ParameterBlocked(f"the parameter registry at {registry_path} is unreadable") from exc
+
+    row = declared.get(TOLERANCE_PARAM)
+    if row is None:
+        raise ParameterBlocked(
+            f"{TOLERANCE_PARAM} is BLOCKED: no founder declaration in {registry_path.name}"
+        )
+    value = row.get("value")
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ParameterBlocked(
+            f"{TOLERANCE_PARAM} declares {value!r}, which is not a whole number of seconds"
+        )
+    return value
+
+
+def _is_under(path: Path, roots: Iterable[Path]) -> bool:
+    resolved = path.resolve()
+    for root in roots:
+        try:
+            resolved.relative_to(Path(root).resolve())
+        except ValueError:
+            continue
+        return True
+    return False
+
+
+def check_local_file(
+    path: Path, *, tolerance_seconds: int, synced_roots: Iterable[Path] = ()
+) -> SkewCheck:
+    """Check a LOCALLY-WRITTEN file's filename stamp against its own mtime.
+
+    Sound only where the local mtime is the authoring moment, which is the case
+    for files this machine wrote (measured ~1s skew). For a file under one of
+    `synced_roots` the mtime is the sync write, so this raises NotThisSeatsCheck
+    rather than reporting sync latency as clock error — that half is Chat-owned,
+    against Drive's server-side timestamp.
+    """
+    if _is_under(path, synced_roots):
+        raise NotThisSeatsCheck(
+            f"{path.name} is under a synced root; its mtime is the sync write",
+            detail=(
+                "The stamp-versus-authoring-time check for synced files is "
+                "Chat-owned, run against Drive's own createdTime/modifiedTime. "
+                "Checking it here would measure sync latency and call it clock error."
+            ),
+        )
+    stamp = path.name[: len(FILENAME_STAMP_SAMPLE)]
+    written_at = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+    return check_stamp_skew(stamp, written_at, tolerance_seconds=tolerance_seconds)
