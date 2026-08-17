@@ -17,17 +17,29 @@
         },
         {
           "id": "DC-1/time/chat-assumed-stamps",
-          "observed": "2026-08-14",
-          "who": "Chat",
-          "what": "Chat stamped filenames from an assumed time rather than a read one on at least three occasions. MAGNITUDE UNKNOWN.",
-          "magnitude": "UNVERIFIED",
-          "why_magnitude_is_unverified": "A 64-minute figure was originally attributed to Chat's clock error, reported by COWORK against the local mirror's mtime. Measurement (PROJECTOS, 2026-08-14) showed that for a Drive-synced file the local mtime is the SYNC write, not the authoring moment, so that figure is part clock error and part sync latency and the two are not separable from a seat. Chat amended its own entry rather than let the number stand: being wrong about the size of your own error is still being wrong. The occurrences are real; only the magnitude is unknown.",
+          "observed": "2026-08-14, amended 2026-08-15 (SWEEP-2-RULINGS)",
+          "who": "Chat — and Chat only. No seat instance has been measured: seat-written stamps measure at 4s against Drive server time, so the seats' clocks are sound and this family is not fleet-wide.",
+          "what": "Chat stamped filenames and prose dates from an assumed time rather than a read one, on MORE THAN THREE occasions. Measured against Drive's server-side timestamps on 2026-08-15: 162 minutes, 21.7, 17.9, 5.2.",
+          "worst_measured_minutes": 162,
+          "magnitude_status": "MEASURED against Drive server time (supersedes the 2026-08-14 UNVERIFIED statement)",
+          "measured_by": "Chat, running the Chat-owned half of the split check against Drive createdTime/modifiedTime — its first real run, and it caught its own author.",
+          "fifth_instance": "2026-08-15: a competitor note stamped 2026-08-14 while Drive read 2026-08-15. Recorded because the count is 'more than three', not exactly three.",
+          "rule_adopted_by_chat": "Read Drive before writing any date, in a filename or in prose.",
           "why_it_is_this_class": "The time was supplied from belief rather than read. It sorts, so it corrupts 'oldest file first' ordering silently.",
-          "now_caught_by": "stamp_for_filename() is the single way to produce a stamp and raises rather than returning a plausible time when the clock cannot be established. Magnitude for synced files is measurable only against Drive's server-side timestamp, which is the Chat-owned half of the split check."
+          "amendment_history": [
+            {
+              "on": "2026-08-14",
+              "said": "At least three occasions, MAGNITUDE UNVERIFIED — a 64-minute figure had been attributed to Chat's clock error, but it was measured against the local mirror's mtime, which for a synced file is the sync write, so clock error and sync latency were not separable from a seat.",
+              "superseded_by": "the 2026-08-15 measurement above",
+              "why": "The anchor problem it named was real and the fix was to split the check, not to widen a tolerance. Once the Chat-owned half ran against the correct anchor, the magnitude stopped being unknowable. Superseded, not deleted: the earlier statement was honest about what could be seen at the time."
+            }
+          ],
+          "now_caught_by": "stamp_for_filename() is the single way to produce a stamp and raises rather than returning a plausible time when the clock cannot be established. For synced files the magnitude is visible only against Drive's server-side timestamp — the Chat-owned half of the split check, now demonstrated live."
         }
       ],
       "tolerance": "DECLARED by the founder on 2026-08-14 at 120s on the resolution argument — see docs/parameter_registry.json (FLEET-CLOCK-SKEW-TOLERANCE). Code still has no default: it resolves the value and fails closed when absent.",
-      "check_ownership": "Split by anchor, ruled 2026-08-14. Locally-written files: PROJECTOS, via check_local_file against local mtime (the authoring moment here). Synced files: CHAT, against Drive's server-side createdTime/modifiedTime — this seat cannot see that fact and refuses the check rather than measuring sync latency and calling it clock error."
+      "check_ownership": "Split by anchor, ruled 2026-08-14. Locally-written files: PROJECTOS, via check_local_file against local mtime (the authoring moment here). Synced files: CHAT, against Drive's server-side createdTime/modifiedTime — this seat cannot see that fact and refuses the check rather than measuring sync latency and calling it clock error.",
+      "split_validated": "2026-08-15. Both halves have now run against real files. Chat's half produced measured magnitudes (worst 162 minutes) and caught the participant who owns it; the local half measured seat-written stamps at 4s. The seat that could not see the fact would have reported sync latency as clock error, and the seat that could see it found a real 162-minute error — which is the whole argument for assigning a check to whoever can see the fact."
     }
   }
 }
