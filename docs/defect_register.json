@@ -1,6 +1,17 @@
 {
   "_about": "Defect classes for this repository, read by projectos.infrastructure.defect_sweep. Declarations (name, source, instances, enforcement_test) are founder-owned and hand-written; the sweep only ever adds an observed 'last_sweep' block. A class is closed when its enforcement test makes a NEW instance fail the build.",
   "classes": {
+    "DC-7": {
+      "name": "Unauthenticated instruction channel",
+      "status": "OPEN",
+      "description": "Every seat takes instructions from files in one Drive folder with no signature and no way to tell an issuer's assignment from a file that simply appeared. Seats run on the founder's own identity, so a seat acting on a bad instruction acts as him. The protection is written here as ABSENT-until-adopted, not as present because a module exists.",
+      "source": "Assignment INBOX-TRUST-BOUNDARY, 2026-08-15; DC-6 discipline: a protection that does not exist is written as absent",
+      "enforcement_test": "tests/test_inbox_auth.py",
+      "what_exists": "The mechanism: projectos.infrastructure.inbox_auth (HMAC-SHA256 stamp, key out-of-band, fail-closed verify, refusal reported). Built and tested 2026-08-17.",
+      "what_is_absent": "Adoption. No issuer signs yet and no seat verifies-before-acting yet, so the channel itself is still open. The mechanism cannot be armed unilaterally by one seat: an enforcing seat would refuse every currently-legitimate unsigned assignment.",
+      "closes_when": "Issuers sign every assignment (Chat holds the key in its instructions), every seat verifies before acting, and the wake scheduler gates on verification. MUST close before the wake is armed — after arming, no human reads a file before a seat acts on it.",
+      "tier_note": "Authentication does not raise a file's tier. An authenticated ESCALATE ask is still refused; being genuine is not being authorised. Pinned by test."
+    },
     "DC-1": {
       "name": "A value believed rather than observed",
       "description": "A claim accepted because something reported it, rather than because it was read from the thing itself. The general form of every trust-the-report defect: an exit code trusted instead of a parsed summary, a seat tag trusted instead of a repo root, a clock trusted instead of an anchored instant.",
