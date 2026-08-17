@@ -57,17 +57,105 @@ PROPOSE_ALLOWLIST: tuple[str, ...] = (
     "draft_assignment",
 )
 
-#: The founder, always. Attempting to classify these lower raises — there is
-#: no configuration that reaches this tuple.
-ESCALATE_ALWAYS: tuple[str, ...] = (
-    "money",
-    "deploy",
-    "credentials",
-    "parameter_value",
-    "rule_promotion",
-    "legal",
-    "widen_allowlist",
+#: THE ESCALATE TIER, v2 — ratified by the founder 2026-08-18 ~00:05 IST
+#: ("ratified", after the eight entries were rendered to him verbatim).
+#: Canonical source: DOCS/ESCALATE-TIER-V2.md (COWORK, 2026-08-17). Carried
+#: character-for-character by assignment ESCALATE-V2-RATIFIED-CARRY-TO-
+#: DOMAIN-TIERS: fixes I-36 / DC-7; closes that document's DC-3 two-copies
+#: window. Labels are the verb phrases as written. NO ninth entry, no
+#: removal, no rewording — any change is a new founder ratification.
+ESCALATE_TIER_V2: tuple[tuple[str, str], ...] = (
+    (
+        "TRANSMITTING AN ORDER",
+        "Sending an instruction to a broker to open, close, modify or cancel a "
+        "position, in a live or a paper account. Composing, storing, logging or "
+        "displaying an order is not transmission; the boundary is the network "
+        "call that leaves this system.",
+    ),
+    (
+        "SETTING A DECIDED-AGAINST VALUE",
+        "Setting or changing a value the system compares to when deciding "
+        "whether to act: anything in the declaration register, and any "
+        "threshold, cap, floor or tolerance a gate or a signal tests against. "
+        "A function argument, config key or variable no decision is taken "
+        "against is not one; the boundary is whether changing it would change "
+        "what the system does, not whether it is called a parameter.",
+    ),
+    (
+        "MOVING MONEY",
+        "Committing, spending, refunding or transferring money, or creating an "
+        "obligation to. Measuring, estimating, reporting or forecasting cost "
+        "is not; the boundary is whether a balance changes.",
+    ),
+    (
+        "EXPOSING SOMETHING OUTSIDE THE FLEET",
+        "Making code, content or a service reachable by anyone outside this "
+        "fleet — including a preview or staging URL a stranger with the link "
+        "can open, and including publishing a package to a registry. Running "
+        "it locally, or on a host only this fleet can reach, is not; the "
+        "boundary is reachability by a third party, not the word used for the "
+        "command.",
+    ),
+    (
+        "GRANTING AN AUTHORISATION",
+        "Authenticating as the founder, or creating, rotating, storing or "
+        "first-time authorising a credential the founder holds. Using a "
+        "connector or session the founder has already authorised for this "
+        "seat is not; the boundary is whether a new authorisation is being "
+        "granted, not whether a request carries a credential.",
+    ),
+    (
+        "BINDING A RULE ON ANOTHER SEAT",
+        "Making a rule binding on a seat other than your own, or amending one "
+        "that already binds. Proposing a rule, describing an existing one, or "
+        "recording how one was applied is not; the boundary is whether "
+        "another seat would be obliged by it. Nothing about marketing, "
+        "pricing or a promotional window is on this list.",
+    ),
+    (
+        "ASSERTING A LEGAL POSITION",
+        "Stating a legal conclusion, or accepting a legal obligation on the "
+        "entity's behalf. Reading, quoting or summarising a published term — "
+        "with its source, its date, and the standing note that it is our "
+        "reading and not a legal opinion — is not; the boundary is whether a "
+        "reader could rely on it as advice.",
+    ),
+    (
+        "WIDENING THE FLEET'S ALLOW-LIST",
+        "Adding a tool, network destination or capability a seat did not "
+        "previously have. The broker IP whitelist is a different object with "
+        "a different owner and is not this entry; say which allow-list you "
+        "mean, always.",
+    ),
 )
+
+#: Machine kind-slugs, mapped to the v2 entry each belongs to. The slugs are
+#: lookup keys for `tier_of`; the ENTRIES above are the ratified law. Legacy
+#: slugs from the v1 fence stay listed as aliases of their v2 entry so no
+#: existing caller's kind silently drops out of the bypass-raise — they are
+#: aliases of the eight, not a ninth entry.
+ESCALATE_KINDS: dict[str, str] = {
+    "transmit_order": "TRANSMITTING AN ORDER",
+    "orders": "TRANSMITTING AN ORDER",  # legacy alias
+    "decided_against_value": "SETTING A DECIDED-AGAINST VALUE",
+    "parameter_value": "SETTING A DECIDED-AGAINST VALUE",  # legacy alias
+    "money": "MOVING MONEY",
+    "expose_outside_fleet": "EXPOSING SOMETHING OUTSIDE THE FLEET",
+    "deploy": "EXPOSING SOMETHING OUTSIDE THE FLEET",  # legacy alias
+    "grant_authorisation": "GRANTING AN AUTHORISATION",
+    "credentials": "GRANTING AN AUTHORISATION",  # legacy alias
+    "login": "GRANTING AN AUTHORISATION",  # legacy alias
+    "bind_rule_on_seat": "BINDING A RULE ON ANOTHER SEAT",
+    "rule_promotion": "BINDING A RULE ON ANOTHER SEAT",  # legacy alias
+    "assert_legal_position": "ASSERTING A LEGAL POSITION",
+    "legal": "ASSERTING A LEGAL POSITION",  # legacy alias
+    "widen_allowlist": "WIDENING THE FLEET'S ALLOW-LIST",
+}
+
+#: The founder, always. Attempting to classify these lower raises — there is
+#: no configuration that reaches this tuple. Derived from the kind map so the
+#: two can never disagree.
+ESCALATE_ALWAYS: tuple[str, ...] = tuple(ESCALATE_KINDS)
 
 #: Founder register for AUTO-list changes: (kind, date, founder_reason).
 #: Appending here is the WRITTEN ACT that authorises a widening; the test

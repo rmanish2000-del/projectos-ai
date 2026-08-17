@@ -59,6 +59,46 @@ class TestRequireTier:
         assert issubclass(tiers.EscalationBypass, InvariantViolation)
 
 
+class TestEscalateTierV2:
+    """The ratified eight (founder, 2026-08-18, source ESCALATE-TIER-V2.md).
+    No ninth entry, no removal, no rewording without a new ratification."""
+
+    def test_exactly_eight_entries_with_the_ratified_labels(self) -> None:
+        assert [label for label, _ in tiers.ESCALATE_TIER_V2] == [
+            "TRANSMITTING AN ORDER",
+            "SETTING A DECIDED-AGAINST VALUE",
+            "MOVING MONEY",
+            "EXPOSING SOMETHING OUTSIDE THE FLEET",
+            "GRANTING AN AUTHORISATION",
+            "BINDING A RULE ON ANOTHER SEAT",
+            "ASSERTING A LEGAL POSITION",
+            "WIDENING THE FLEET'S ALLOW-LIST",
+        ]
+
+    def test_every_entry_has_a_nonempty_body_naming_its_boundary(self) -> None:
+        for _label, body in tiers.ESCALATE_TIER_V2:
+            assert "the boundary is" in body or "is not this entry" in body
+
+    def test_every_kind_slug_maps_to_a_ratified_entry(self) -> None:
+        labels = {label for label, _ in tiers.ESCALATE_TIER_V2}
+        for kind, label in tiers.ESCALATE_KINDS.items():
+            assert label in labels, f"{kind} maps to unratified {label!r}"
+
+    def test_escalate_always_derives_from_the_kind_map(self) -> None:
+        # One source: the tuple existing callers check membership against can
+        # never disagree with the map that names each kind's entry.
+        assert tuple(tiers.ESCALATE_KINDS) == tiers.ESCALATE_ALWAYS
+
+    def test_legacy_kinds_still_raise_on_bypass(self) -> None:
+        # v1 slugs are aliases of their v2 entries, not dropped: a caller
+        # using an old kind keeps the strong bypass-raise, not just the
+        # fail-closed default.
+        for legacy in ("orders", "parameter_value", "deploy", "credentials",
+                       "login", "rule_promotion", "legal"):
+            with pytest.raises(tiers.EscalationBypass):
+                tiers.require_tier(legacy, tiers.TIER_AUTO)
+
+
 class TestFounderRegister:
     def test_auto_membership_is_pinned_to_the_register(self) -> None:
         """Widening AUTO without a founder register entry fails the build.
