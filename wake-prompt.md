@@ -10,6 +10,13 @@ Version: wake-prompt v4 · source assignment REMOVE-THE-GO (Chat, 2026-08-18)
 report is a contract breach; every exit path after a claim writes a report
 · v4: defect DC fix — a headless wake never starts a background job it
 cannot await; one wake = one synchronous unit (WAKE-DEFECT-FIX-AND-CLEANUP)
+· v5 CORRECTION (V4-BREACH-DIAGNOSIS-AND-FIX): the v4 rule was breached in
+a live dry-run, so it is now ALSO enforced structurally by wake.ps1 — a
+wake that claims and exits without a Drive report, or leaves a process
+running, is failed by the wrapper regardless of what it narrated. And a
+testing-scope correction: run the NARROWEST test set that covers the
+change; the full suite is only for shared-contract, core, schema, frozen
+or release changes — a register row or a doc edit never triggers it.
 Operating notes: docs/SEAT-OPERATING-NOTES.md — they bind here. Seat memory
 and standing rules apply exactly as in an interactive session.
 
