@@ -259,6 +259,75 @@ class TestTransitionSwitch:
         assert should_act(good, MODE_ENFORCING)
 
 
+class TestBatchSign:
+    """One vouching act, never a rubber stamp (BATCH-SIGN)."""
+
+    def _inbox(self, tmp_path: Path) -> Path:
+        inbox = tmp_path / "INBOX"
+        inbox.mkdir()
+        (inbox / "a_first.md").write_text("A-TITLE\nbody\n", encoding="utf-8")
+        (inbox / "b_second.md").write_text("B-TITLE\nbody\n", encoding="utf-8")
+        (inbox / "c_already.md").write_text(sign_text("C signed\n", KEY), encoding="utf-8")
+        return inbox
+
+    def test_confirmed_batch_stamps_all_unsigned(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from projectos.infrastructure.inbox_auth import batch_sign
+
+        inbox = self._inbox(tmp_path)
+        code = batch_sign(inbox, KEY, ask=lambda prompt: "SIGN")
+        out = capsys.readouterr().out
+        assert code == 0
+        assert "About to vouch for 2 file(s)" in out
+        assert "A-TITLE" in out  # the founder SEES what he vouches for
+        for name in ("a_first.md", "b_second.md"):
+            assert verify_text((inbox / name).read_text(encoding="utf-8"), KEY).authentic
+
+    def test_declined_confirmation_stamps_nothing(self, tmp_path: Path) -> None:
+        from projectos.infrastructure.inbox_auth import batch_sign
+
+        inbox = self._inbox(tmp_path)
+        before = {p.name: p.read_text(encoding="utf-8") for p in inbox.iterdir()}
+        code = batch_sign(inbox, KEY, ask=lambda prompt: "no")
+        assert code == 3
+        after = {p.name: p.read_text(encoding="utf-8") for p in inbox.iterdir()}
+        assert after == before  # byte-identical: nothing stamped on decline
+
+    def test_bad_stamp_is_reported_never_restamped(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from projectos.infrastructure.inbox_auth import batch_sign
+
+        inbox = self._inbox(tmp_path)
+        tampered = sign_text("D original\n", KEY).replace("original", "altered")
+        (inbox / "d_tampered.md").write_text(tampered, encoding="utf-8")
+        code = batch_sign(inbox, KEY, ask=lambda prompt: "SIGN")
+        out = capsys.readouterr().out
+        assert code == 1  # loud: something needs eyes
+        assert "NOT SIGNING" in out
+        # The tampered file is byte-identical - not papered over.
+        assert (inbox / "d_tampered.md").read_text(encoding="utf-8") == tampered
+
+    def test_never_touches_files_outside_the_directory(self, tmp_path: Path) -> None:
+        from projectos.infrastructure.inbox_auth import batch_sign
+
+        inbox = self._inbox(tmp_path)
+        outside = tmp_path / "outside.md"
+        outside.write_text("not in inbox\n", encoding="utf-8")
+        nested = inbox / "sub"
+        nested.mkdir()
+        (nested / "nested.md").write_text("nested\n", encoding="utf-8")
+        batch_sign(inbox, KEY, ask=lambda prompt: "SIGN")
+        assert outside.read_text(encoding="utf-8") == "not in inbox\n"
+        assert (nested / "nested.md").read_text(encoding="utf-8") == "nested\n"
+
+    def test_missing_directory_is_blocked(self, tmp_path: Path) -> None:
+        from projectos.infrastructure.inbox_auth import batch_sign
+
+        assert batch_sign(tmp_path / "absent", KEY, ask=lambda prompt: "SIGN") == 2
+
+
 class TestCli:
     def test_sign_then_verify_round_trip(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

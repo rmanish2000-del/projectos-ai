@@ -43,6 +43,7 @@ import hmac
 import json
 import os
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -309,17 +310,81 @@ def refuse_and_report(verdict: AuthVerdict, reports_dir: Path, *, stamp: str) ->
     return target
 
 
-def main(argv: list[str] | None = None) -> int:
-    """`python -m projectos.infrastructure.inbox_auth {sign|verify} FILE`.
+def batch_sign(
+    inbox_dir: Path,
+    keyring: dict[str, bytes],
+    *,
+    ask: Callable[[str], str] = input,
+) -> int:
+    """ONE vouching act over the INBOX (assignment BATCH-SIGN).
 
-    sign   — stamp FILE in place with the fleet key. Prints one status line;
-             NEVER the key.
-    verify — print the verdict line and the transition mode's decision.
-             Exit 0 when the seat may act, 2 when it must refuse.
+    Lists every currently unsigned file with its title, asks for one explicit
+    confirmation, then stamps them all. It is an authorization, not a rubber
+    stamp: the founder sees exactly what he vouches for before anything is
+    signed, a declined confirmation stamps NOTHING, and no file outside the
+    named directory is ever touched (top level only, no recursion).
+
+    A file whose stamp is PRESENT BUT WRONG is never quietly re-signed —
+    tampering evidence is reported, not papered over.
+
+    Exit codes: 0 all candidates stamped · 1 something needs attention (a
+    bad-stamp file present, or a write failed — each named) · 3 declined,
+    nothing stamped.
+    """
+    if not inbox_dir.is_dir():
+        print(f"BLOCKED: {inbox_dir} is not a directory")
+        return 2
+    unsigned: list[Path] = []
+    suspect: list[AuthVerdict] = []
+    for path in sorted(inbox_dir.glob("*.md")):
+        verdict = verify_text(path.read_text(encoding="utf-8"), keyring, name=str(path))
+        if verdict.authentic:
+            continue
+        if "no AUTH stamp" in verdict.reason:
+            unsigned.append(path)
+        else:
+            suspect.append(verdict)
+
+    for verdict in suspect:
+        print(f"NOT SIGNING (needs eyes, not a stamp): {verdict.report_line()}")
+    if not unsigned:
+        print("nothing unsigned to stamp")
+        return 1 if suspect else 0
+
+    print(f"About to vouch for {len(unsigned)} file(s):")
+    for number, path in enumerate(unsigned, start=1):
+        first = path.read_text(encoding="utf-8").splitlines()
+        title = first[0].strip() if first else "(empty file)"
+        print(f"  {number:2d}. {path.name} - {title[:90]}")
+    answer = ask(f"Type SIGN to stamp ALL {len(unsigned)} listed files; anything else aborts: ")
+    if answer.strip() != "SIGN":
+        print("declined - nothing stamped")
+        return 3
+
+    failures = 0
+    for path in unsigned:
+        try:
+            path.write_text(sign_text(path.read_text(encoding="utf-8"), keyring), encoding="utf-8")
+            print(f"signed: {path.name} [key {signing_key(keyring)[0]}]")
+        except OSError as exc:
+            failures += 1
+            print(f"FAILED to stamp {path.name}: {exc}")
+    return 1 if (failures or suspect) else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`python -m projectos.infrastructure.inbox_auth {sign|verify|batch-sign} PATH`.
+
+    sign       — stamp FILE in place with the fleet key. Prints one status
+                 line; NEVER the key.
+    verify     — print the verdict line and the transition mode's decision.
+                 Exit 0 when the seat may act, 2 when it must refuse.
+    batch-sign — list every unsigned file in DIR, confirm once, stamp all
+                 (the founder's one vouching act; see batch_sign).
     """
     args = list(sys.argv[1:] if argv is None else argv)
-    if len(args) != 2 or args[0] not in ("sign", "verify"):
-        print("usage: python -m projectos.infrastructure.inbox_auth {sign|verify} FILE")
+    if len(args) != 2 or args[0] not in ("sign", "verify", "batch-sign"):
+        print("usage: python -m projectos.infrastructure.inbox_auth {sign|verify|batch-sign} PATH")
         return 2
     command, target = args[0], Path(args[1])
     try:
@@ -327,6 +392,9 @@ def main(argv: list[str] | None = None) -> int:
     except KeyUnavailable as exc:
         print(f"BLOCKED: {exc.message}")
         return 2
+
+    if command == "batch-sign":
+        return batch_sign(target, keyring)
 
     if command == "sign":
         signed = sign_text(target.read_text(encoding="utf-8"), keyring)
