@@ -62,6 +62,31 @@ class TestParseAndRender:
     def test_clean_register_audits_clean(self) -> None:
         assert audit(REGISTER) == []
 
+    def test_word_named_class_counts_like_a_numbered_one(self) -> None:
+        # DC-CLAIM (AIW ruling 2, 2026-08-18) is the first class whose id
+        # carries a word, not a number. The renderer must not treat it as
+        # invisible: invisible means uncounted, and uncounted means the
+        # classes/instances totals silently exclude it.
+        with_claim = (
+            REGISTER
+            + "\n| 3 | `DC-CLAIM` CLAIM-WIDER-THAN-MECHANISM | {{count:DC-CLAIM}} "
+            + "| No. Memory only |"
+            + "\n\n## DC-CLAIM · CLAIM-WIDER-THAN-MECHANISM — {{count:DC-CLAIM}}\n"
+            + "\n| id | Instance |\n|---|---|\n| **I-05** | fifth |\n| **I-06** | sixth |\n"
+        )
+        classes, enforcement = parse(with_claim)
+        table = counts(classes, enforcement)
+        assert table["DC-CLAIM"] == 2
+        assert table == {"DC-1": 3, "DC-2": 1, "DC-CLAIM": 2, "instances": 6, "classes": 3}
+        assert enforcement["DC-CLAIM"] == "no. memory only"
+        rendered = render(with_claim)
+        assert "## DC-CLAIM · CLAIM-WIDER-THAN-MECHANISM — 2" in rendered
+        assert audit(with_claim) == []
+
+    def test_capitalised_words_suffix_opens_a_sentence(self) -> None:
+        rendered = render(REGISTER + "\n{{count:instances|Words}} in total.\n")
+        assert "Four in total." in rendered
+
 
 class TestFailConditions:
     def test_duplicate_instance_id_fails(self) -> None:

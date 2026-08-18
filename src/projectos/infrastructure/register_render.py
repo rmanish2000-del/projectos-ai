@@ -8,10 +8,12 @@ marker, and FAILS the build on: an unknown marker · a duplicate or missing
 instance id · a class with no instances · any surviving bare count literal
 in a sentence containing "instances", "classes" or "of the".
 
-Marker keys: ``instances`` (total) · ``classes`` · ``DC-n`` (one class) ·
+Marker keys: ``instances`` (total) · ``classes`` · ``DC-n`` / ``DC-NAME``
+(one class; ids may be numbered or word-named, e.g. ``DC-CLAIM``) ·
 ``enforcement:<text>`` (ranked-table rows whose enforcement cell contains
 <text>). Suffix ``|words`` spells the number out (``seven``), because the
-register's own voice spells small numbers.
+register's own voice spells small numbers; ``|Words`` capitalises it for a
+sentence-opening position (``Seven``).
 
 Exit codes, per the scanner convention: 0 clean · 1 failures · 2 register
 file not found (louder than a finding).
@@ -24,14 +26,16 @@ import re
 import sys
 from pathlib import Path
 
-_CLASS_HEAD = re.compile(r"^## (DC-\d+)\b")
+# Class ids are DC-<word>: numbered (DC-1) or named (DC-CLAIM, appended by
+# AIW ruling 2, 2026-08-18 — its class id carries a word, not a number).
+_CLASS_HEAD = re.compile(r"^## (DC-\w+)\b")
 # An instance row's first cell is the BOLD id (`| **I-33** | ...`), optionally
 # decorated (`| **I-27** ⭑ |`). A plain `I-33` in a first cell is a cross-
 # reference to an instance, not the instance itself — the live register uses
 # exactly that distinction in its secondary-class mapping table.
 _INSTANCE_ROW = re.compile(r"^\|\s*\*\*(I-\d+)\*\*[^|]*\|")
-_RANKED_ROW = re.compile(r"^\|[^|]*\|\s*\*{0,2}`?(DC-\d+)`?[^|]*\|[^|]*\|([^|]*)\|")
-_MARKER = re.compile(r"\{\{count:([^}|]+)(\|words)?\}\}")
+_RANKED_ROW = re.compile(r"^\|[^|]*\|\s*\*{0,2}`?(DC-\w+)`?[^|]*\|[^|]*\|([^|]*)\|")
+_MARKER = re.compile(r"\{\{count:([^}|]+)(\|[wW]ords)?\}\}")
 _ONES = [
     "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
     "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
@@ -44,7 +48,7 @@ _WORD_NUMBER = re.compile(
     re.IGNORECASE,
 )
 _TRIGGERS = ("instances", "classes", "of the")
-_NOT_A_COUNT = re.compile(r"I-\d+|DC-\d+|\d{4}-\d{2}-\d{2}|§\s?\d+|\bv\d+\b|\b\d{1,2}:\d{2}\b")
+_NOT_A_COUNT = re.compile(r"I-\d+|DC-\w+|\d{4}-\d{2}-\d{2}|§\s?\d+|\bv\d+\b|\b\d{1,2}:\d{2}\b")
 
 
 def _words(n: int) -> str:
@@ -118,7 +122,11 @@ def render(text: str) -> str:
             value = table[key]
         else:
             raise ValueError(f"unknown marker key {key!r}")
-        return _words(value) if match.group(2) else str(value)
+        if not match.group(2):
+            return str(value)
+        spelled = _words(value)
+        # `|Words` capitalises, because a rendered word can open a sentence.
+        return spelled[0].upper() + spelled[1:] if match.group(2) == "|Words" else spelled
 
     return _MARKER.sub(_sub, text)
 
