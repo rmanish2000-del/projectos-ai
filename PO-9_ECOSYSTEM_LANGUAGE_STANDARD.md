@@ -1,4 +1,6 @@
-# PO-9 — Canonical Ecosystem Language & Naming Standard v1.0
+# PO-9 — Canonical Ecosystem Language & Naming Standard v1.1
+
+> **v1.1, 2026-08-18.** Two changes, both §20-MINOR (additive), both ruled: §5.1 Evidence Grades added as the single normative definition (PO9-GRADE-PROMOTION, 2026-08-14), and the grade set corrected from four to five by Chat ruling SEAT-VOCABULARY-CORRECTION-2 (2026-08-17): **PROPOSED is a grade**. v1.0 stands unedited in git history (commit e4e4d9f and earlier); this line is the record of what changed and why.
 
 **One authoritative vocabulary for the entire ecosystem — every concept has exactly one official name, and every name means exactly one thing.**
 
@@ -146,7 +148,7 @@ Examples: `CAP-evidence-verify@1.2` · `DEC-0001` · `EVT-assignment-verified` �
 | `POS-P<n>` | Platform phase | Kernel/platform |
 | `<PRD>-P<n>` | Product phase | Product |
 | `FAST/REVIEWED/GOVERNED` | Workflow modes | Methodology/PO-4 |
-| `Verified/Reported/Assumed/Blocked` | Evidence grades (closed set) | PO-9 §5.1 |
+| `Verified/Reported/Assumed/Proposed/Blocked` | Evidence grades (closed set) | PO-9 §5.1 |
 | Lanes `A/B/C/D/F` | Execution lanes | Methodology |
 
 ## 20. Versioning Rules
@@ -207,15 +209,17 @@ The authoritative name for each core concept. (Status: ✅ canonical · ⚠ prov
 
 ## 5.1 Evidence Grades (normative)
 
-**This is the single normative definition of the evidence grades for the whole ecosystem.** The set is closed — four grades, no others:
+**This is the single normative definition of the evidence grades for the whole ecosystem.** The set is closed — five grades, no others:
 
-> Every claim above is one of: Verified (read from repo/git), Reported, Assumed, Blocked.
+> **VERIFIED · REPORTED · ASSUMED · PROPOSED · BLOCKED**
 
-A claim is **Verified** unless explicitly tagged otherwise inline. "Unconfirmed" is not a grade; it maps to **Assumed**.
+*Verified* means read from the artefact itself (repo/git). A claim is **Verified** unless explicitly tagged otherwise inline. "Unconfirmed" is not a grade; it maps to **Assumed**.
 
-**Provenance.** These grades were defined in `POS-COW-CHAT-BRIDGE-001-SPEC.md` §"Evidence classification" and are moved here unchanged by assignment PO9-GRADE-PROMOTION (2026-08-14) — a relocation to the owning document, not a redefinition (§20: no silent change of meaning). The bridge spec now cites this section instead of defining. A standing fleet rule (INTEL-INTEGRATION, 2026-08-14) depends on this vocabulary, which is why it belongs in the standard rather than in a handoff document.
+**ASSUMED vs PROPOSED — the gap is the useful part** (ruling wording, verbatim): "ASSUMED is something we are acting on without evidence, PROPOSED is something nobody has acted on at all. Collapsing them would let a proposal be read as an operating assumption, which is how a suggestion becomes a fact without anyone deciding."
 
-**Carried across as-is.** Only *Verified* carries a definition in the source wording; *Reported*, *Assumed* and *Blocked* are named but not glossed. That gap is preserved deliberately rather than filled here — writing three new definitions would be a rewrite, not a move. Glossing them is a separate proposal (Appendix B).
+**Provenance.** Four grades (Verified, Reported, Assumed, Blocked) were defined in `POS-COW-CHAT-BRIDGE-001-SPEC.md` §"Evidence classification" and moved here unchanged by assignment PO9-GRADE-PROMOTION (2026-08-14). The set was corrected to five by Chat ruling SEAT-VOCABULARY-CORRECTION-2 (2026-08-17), resolving the divergence PO9-GRADE-PROMOTION reported: PO-2.5's five-label citation was right and this section was short by one. PROPOSED was in live use (user preferences, EduOS `PROJECT_STATE.md`, `FOUNDER_LEARNING.md` L-002 — per PO-2.5 D-4/T-3) before it was in the standard; this entry closes that gap. A standing fleet rule (INTEL-INTEGRATION, 2026-08-14) depends on this vocabulary, which is why it lives in the standard rather than in a handoff document.
+
+**Gloss status, honestly.** *Verified* is glossed by its source wording; *Assumed* and *Proposed* by the ruling quoted above; *Reported* and *Blocked* are named but not glossed anywhere authoritative. That remaining gap is preserved rather than filled — glossing them is a separate proposal (Appendix B).
 
 **Do not confuse with `EvidenceClass`** (kernel, Foundation Spec §8.1 — `commit`, `pr`, `ci_run`, `test_report`, `artifact`, `approval`). That is *what kind of evidence exists*; an evidence grade is *how well a claim is supported*. Two concepts, two vocabularies, similar words — §2.12 (no homographs) applies: prefer "evidence **grade**" for this set and "evidence **class**" for the kernel's.
 
@@ -363,4 +367,4 @@ Reviewed the corpus for the four failure classes. Findings, with recommended cor
 
 ---
 
-*End of PO-9 Canonical Ecosystem Language & Naming Standard v1.0. Design only — no implementation, no renaming inside existing documents, no constitutional amendment. One concept, one name; corrections are recommendations to be applied later as governed migrations.*
+*End of PO-9 Canonical Ecosystem Language & Naming Standard v1.1 (v1.0 + §5.1 Evidence Grades, five-grade set per SEAT-VOCABULARY-CORRECTION-2). Design only — no implementation, no renaming inside existing documents, no constitutional amendment. One concept, one name; corrections are recommendations to be applied later as governed migrations.*
