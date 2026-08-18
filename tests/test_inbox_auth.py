@@ -327,6 +327,41 @@ class TestBatchSign:
 
         assert batch_sign(tmp_path / "absent", KEY, ask=lambda prompt: "SIGN") == 2
 
+    def test_vouch_flag_stamps_without_any_console_read(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # The founder's prompt hung in a ConPTY pane; --vouch is the same
+        # vouching act with no console read to go wrong. The listing still
+        # prints - he must still see what he vouches for.
+        from projectos.infrastructure.inbox_auth import batch_sign
+
+        def explode(prompt: str) -> str:
+            raise AssertionError("console must not be read under --vouch")
+
+        inbox = self._inbox(tmp_path)
+        code = batch_sign(inbox, KEY, ask=explode, vouch=True)
+        out = capsys.readouterr().out
+        assert code == 0
+        assert "About to vouch for 2 file(s)" in out
+        assert "--vouch given" in out
+        for name in ("a_first.md", "b_second.md"):
+            assert verify_text((inbox / name).read_text(encoding="utf-8"), KEY).authentic
+
+    def test_console_timeout_declines_instead_of_hanging(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The never-hang guarantee: a console that delivers no keys ends in
+        # a decline after the timeout, never an eternal blink.
+        from projectos.infrastructure import inbox_auth
+
+        inbox = self._inbox(tmp_path)
+        monkeypatch.setattr(
+            inbox_auth, "_ask_console", lambda prompt, timeout_seconds=1: ""
+        )
+        code = inbox_auth.batch_sign(inbox, KEY, ask=inbox_auth._ask_console)
+        assert code == 3
+        assert "declined" in capsys.readouterr().out
+
 
 class TestCli:
     def test_sign_then_verify_round_trip(

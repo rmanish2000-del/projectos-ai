@@ -310,11 +310,56 @@ def refuse_and_report(verdict: AuthVerdict, reports_dir: Path, *, stamp: str) ->
     return target
 
 
+def _ask_console(prompt: str, timeout_seconds: int = 120) -> str:
+    """Read one confirmation line from the REAL console input buffer.
+
+    Why not input(): the founder's batch-sign hung at the prompt — in
+    ConPTY-backed panes (embedded terminals), sys.stdin reports isatty=True
+    yet typed keys never reach the child's stdin pipe, so input() blocks
+    forever with no echo. msvcrt reads the console buffer directly (getwche
+    echoes each key), and the timeout guarantees the tool can NEVER hang:
+    on timeout it returns empty, which the caller treats as decline.
+    """
+    print(prompt, end="", flush=True)
+    try:
+        import msvcrt
+    except ImportError:  # non-Windows: plain input is fine there
+        try:
+            return input()
+        except (EOFError, KeyboardInterrupt):
+            return ""
+    import time as _time
+
+    deadline = _time.monotonic() + timeout_seconds
+    typed: list[str] = []
+    while _time.monotonic() < deadline:
+        if not msvcrt.kbhit():
+            _time.sleep(0.05)
+            continue
+        char = msvcrt.getwche()
+        if char in ("\r", "\n"):
+            print()
+            return "".join(typed)
+        if char == "\x03":  # Ctrl+C
+            print()
+            return ""
+        if char == "\x08":  # backspace
+            if typed:
+                typed.pop()
+                print(" \b", end="", flush=True)
+            continue
+        typed.append(char)
+    print("\n(no input within the timeout - treating as decline; "
+          "use --vouch for the non-interactive path)")
+    return ""
+
+
 def batch_sign(
     inbox_dir: Path,
     keyring: dict[str, bytes],
     *,
-    ask: Callable[[str], str] = input,
+    ask: Callable[[str], str] = _ask_console,
+    vouch: bool = False,
 ) -> int:
     """ONE vouching act over the INBOX (assignment BATCH-SIGN).
 
@@ -356,10 +401,18 @@ def batch_sign(
         first = path.read_text(encoding="utf-8").splitlines()
         title = first[0].strip() if first else "(empty file)"
         print(f"  {number:2d}. {path.name} - {title[:90]}")
-    answer = ask(f"Type SIGN to stamp ALL {len(unsigned)} listed files; anything else aborts: ")
-    if answer.strip() != "SIGN":
-        print("declined - nothing stamped")
-        return 3
+    if vouch:
+        # The flag IS the deliberate act (--vouch): same listing shown, no
+        # console read to go wrong. Built after the interactive prompt hung
+        # at the founder's terminal (BATCH-SIGN-FIXED).
+        print(f"--vouch given: stamping all {len(unsigned)} listed files")
+    else:
+        answer = ask(
+            f"Type SIGN to stamp ALL {len(unsigned)} listed files; anything else aborts: "
+        )
+        if answer.strip() != "SIGN":
+            print("declined - nothing stamped")
+            return 3
 
     failures = 0
     for path in unsigned:
@@ -383,8 +436,13 @@ def main(argv: list[str] | None = None) -> int:
                  (the founder's one vouching act; see batch_sign).
     """
     args = list(sys.argv[1:] if argv is None else argv)
+    vouch = "--vouch" in args
+    args = [a for a in args if a != "--vouch"]
     if len(args) != 2 or args[0] not in ("sign", "verify", "batch-sign"):
-        print("usage: python -m projectos.infrastructure.inbox_auth {sign|verify|batch-sign} PATH")
+        print(
+            "usage: python -m projectos.infrastructure.inbox_auth "
+            "{sign|verify|batch-sign} PATH [--vouch]"
+        )
         return 2
     command, target = args[0], Path(args[1])
     try:
@@ -394,7 +452,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if command == "batch-sign":
-        return batch_sign(target, keyring)
+        return batch_sign(target, keyring, vouch=vouch)
 
     if command == "sign":
         signed = sign_text(target.read_text(encoding="utf-8"), keyring)
