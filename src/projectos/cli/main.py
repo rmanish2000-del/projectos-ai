@@ -484,6 +484,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # -- history ---------------------------------------------------------------
+    # -- new -------------------------------------------------------------------
+    new = subparsers.add_parser(
+        "new", help="Scaffold a fleet-aligned project: local repo, private GitHub, Drive root."
+    )
+    new.add_argument("name", help="Project name (letters/digits/hyphens, starts with a letter).")
+    new.add_argument("--desc", required=True, help="One-line description.")
+    new.add_argument(
+        "--parent", type=Path, default=Path("C:/"), help="Parent directory for the local repo."
+    )
+    new.add_argument(
+        "--drive-root",
+        type=Path,
+        default=Path("G:/My Drive"),
+        help="Drive area holding the fleet's project roots.",
+    )
+
     history = subparsers.add_parser("history", help="Audit log (append-only, hash-chained).")
     history.add_argument("--assignment", default=None, help="Filter to one assignment.")
     history.add_argument(
@@ -508,6 +524,7 @@ HANDLERS = {
     "block": commands.cmd_block,
     "founder": commands.cmd_founder,
     "history": commands.cmd_history,
+    "new": commands.cmd_new,
 }
 
 

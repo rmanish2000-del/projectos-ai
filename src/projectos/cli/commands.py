@@ -1192,6 +1192,31 @@ def _parse_options(raw_options: list[str]) -> tuple[EscalationOption, ...]:
 # -- history ------------------------------------------------------------------
 
 
+def cmd_new(args: argparse.Namespace) -> int:
+    """Scaffold a fleet-aligned project (PROJECT-BOOTSTRAP)."""
+    from projectos.infrastructure.project_bootstrap import scaffold_project
+
+    result = scaffold_project(
+        args.name, args.desc, projects_parent=args.parent, drive_root=args.drive_root
+    )
+    print(formatting.heading(f"NEW PROJECT  {args.name}"))
+    for step in result.steps:
+        marker = "ok " if step.ok else "FAIL"
+        print(f"  [{marker}] {step.step}: {step.detail}")
+    if not result.ok:
+        print("  Scaffold stopped at the first failure; completed steps are listed above.")
+        return int(ExitCode.INVARIANT_ERROR)
+    print()
+    print("  The ONLY founder paste — 3-line pointer for the new Claude Project:")
+    print()
+    for line in result.pointer_text.strip().splitlines():
+        print(f"    {line}")
+    print()
+    print("  Founder-only next acts: create the Claude Project + paste the pointer;")
+    print("  answer CHAT-01; register the wake task (docs/wake-task.cmd) when ratified.")
+    return int(ExitCode.OK)
+
+
 def cmd_history(args: argparse.Namespace) -> int:
     kernel = _kernel(args)
     entries: tuple[AuditEntry, ...]
