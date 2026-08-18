@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import stat
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -223,6 +224,17 @@ def scaffold_project(
     return result
 
 
+def _rmtree_force(path: Path) -> None:
+    """rmtree that clears the read-only bit and retries — git marks every
+    object file read-only on Windows, so a plain rmtree dies on ``.git``."""
+
+    def _onerror(func: Callable[[str], object], failed: str, _exc: object) -> None:
+        Path(failed).chmod(stat.S_IWRITE)
+        func(failed)
+
+    shutil.rmtree(path, onerror=_onerror)
+
+
 def delete_project(
     name: str,
     *,
@@ -238,11 +250,11 @@ def delete_project(
     steps: list[Step] = []
     local = projects_parent / name
     if local.exists():
-        shutil.rmtree(local)
+        _rmtree_force(local)
     steps.append(Step("local", not local.exists(), f"{local} removed"))
     drive = drive_root / name
     if drive.exists():
-        shutil.rmtree(drive)
+        _rmtree_force(drive)
     steps.append(Step("drive", not drive.exists(), f"{drive} removed"))
     fleet_root = drive_root / "FLEET-ROOT.md"
     if fleet_root.exists():
@@ -261,3 +273,31 @@ def delete_project(
     )
     steps.append(Step("github", code == 0, detail))
     return steps
+
+
+def _main(argv: list[str] | None = None) -> int:
+    """``py -3.11 -m projectos.infrastructure.project_bootstrap delete <NAME>``.
+
+    Teardown lives behind ``-m projectos`` deliberately: a headless wake's
+    allowlist admits no other deletion tool, and keeping it off the main CLI
+    surface keeps "delete a project" a dry-run cleanup act, not a routine
+    command sitting next to ``new``.
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="projectos.infrastructure.project_bootstrap")
+    sub = parser.add_subparsers(dest="command", required=True)
+    delete = sub.add_parser("delete", help="Tear a scaffold down completely (dry-run cleanup).")
+    delete.add_argument("name", help="Project name as scaffolded.")
+    args = parser.parse_args(argv)
+
+    ok = True
+    for step in delete_project(args.name):
+        marker = "ok " if step.ok else "FAIL"
+        print(f"[{marker}] {step.step}: {step.detail}")
+        ok = ok and step.ok
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":  # pragma: no cover — argv shell over delete_project
+    raise SystemExit(_main())

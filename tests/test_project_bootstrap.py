@@ -136,6 +136,27 @@ class TestDelete:
         assert "| Testos |" not in (drive / "FLEET-ROOT.md").read_text(encoding="utf-8")
         assert all(s.ok for s in steps)
 
+    def test_delete_clears_read_only_files_like_git_objects(self, tmp_path: Path) -> None:
+        import stat
+
+        parent, drive = tmp_path / "c", tmp_path / "drive"
+        parent.mkdir(), drive.mkdir()
+        scaffold_project(
+            "Testos", "desc", projects_parent=parent, drive_root=drive,
+            templates_dir=TEMPLATES, run=_ok_runner([]),
+        )
+        # git marks object files read-only on Windows; deletion must not die on them.
+        objects = parent / "Testos" / ".git" / "objects" / "01"
+        objects.mkdir(parents=True)
+        frozen = objects / "ea66"
+        frozen.write_text("x", encoding="utf-8")
+        frozen.chmod(stat.S_IREAD)
+        steps = delete_project(
+            "Testos", projects_parent=parent, drive_root=drive, run=_ok_runner([])
+        )
+        assert not (parent / "Testos").exists()
+        assert next(s for s in steps if s.step == "local").ok
+
     def test_github_scope_failure_is_recorded_as_blocked(self, tmp_path: Path) -> None:
         def no_scope(args: list[str], cwd: Path) -> tuple[int, str]:
             return (1, "HTTP 403: Must have admin rights / delete_repo scope")
@@ -146,3 +167,24 @@ class TestDelete:
         github = next(s for s in steps if s.step == "github")
         assert not github.ok
         assert "BLOCKED" in github.detail
+
+
+class TestMain:
+    def test_delete_entrypoint_reports_steps_and_exit_code(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from projectos.infrastructure import project_bootstrap
+        from projectos.infrastructure.project_bootstrap import Step, _main
+
+        recorded: list[str] = []
+
+        def fake_delete(name: str, **kwargs: object) -> list[Step]:
+            recorded.append(name)
+            return [Step("local", True, "removed"), Step("github", False, "BLOCKED")]
+
+        monkeypatch.setattr(project_bootstrap, "delete_project", fake_delete)
+        assert _main(["delete", "Testos"]) == 1
+        assert recorded == ["Testos"]
+        out = capsys.readouterr().out
+        assert "[ok ] local" in out
+        assert "[FAIL] github" in out
