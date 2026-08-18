@@ -8,7 +8,9 @@
 param(
     [string]$RepoRoot = "C:\ProjectOS-AI",
     [string]$Seat = "PROJECTOS",
-    [string]$ReportsDir = "G:\My Drive\AGENT-REPORTS"
+    [string]$ReportsDir = "G:\My Drive\AGENT-REPORTS",
+    # CHAT-AUTO-RESTOCK passes wake-prompt-chat.md; seat wakes use the default.
+    [string]$PromptFile = "wake-prompt.md"
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,8 +28,8 @@ function Write-WakeFailure([string]$why) {
     # this wrapper's guaranteed signal is the Drive file above.
 }
 
-$prompt = Join-Path $RepoRoot "wake-prompt.md"
-if (-not (Test-Path $prompt)) { Write-WakeFailure "wake-prompt.md missing"; exit 2 }
+$prompt = Join-Path $RepoRoot $PromptFile
+if (-not (Test-Path $prompt)) { Write-WakeFailure "$PromptFile missing"; exit 2 }
 $cli = Get-Command claude -ErrorAction SilentlyContinue
 if ($null -eq $cli) { Write-WakeFailure "claude CLI not on PATH"; exit 2 }
 
