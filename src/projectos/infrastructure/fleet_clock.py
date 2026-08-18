@@ -288,3 +288,20 @@ def check_local_file(
     stamp = path.name[: len(FILENAME_STAMP_SAMPLE)]
     written_at = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
     return check_stamp_skew(stamp, written_at, tolerance_seconds=tolerance_seconds)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    # `py -3.11 -m projectos.infrastructure.fleet_clock [filename|report]`.
+    # Exists so the headless allowlist can permit `-m projectos.*` module runs
+    # while arbitrary `python -c` stays fenced — the stamp must be obtainable
+    # in one governed command or seats fall back to typing time from belief.
+    import sys
+
+    kind = sys.argv[1] if len(sys.argv) > 1 else "filename"
+    if kind == "filename":
+        print(stamp_for_filename())
+    elif kind == "report":
+        print(stamp_for_report())
+    else:
+        print(f"unknown stamp kind {kind!r}: use 'filename' or 'report'", file=sys.stderr)
+        raise SystemExit(2)

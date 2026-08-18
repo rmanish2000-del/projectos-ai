@@ -17,7 +17,7 @@ Set-Location $RepoRoot
 function Write-WakeFailure([string]$why) {
     # Fleet-clock stamp when python is reachable; raw UTC marked ASSUMED when
     # it is not - a failure record with a suspect stamp beats no record.
-    try { $stamp = py -3.11 -c "from projectos.infrastructure.fleet_clock import stamp_for_filename; print(stamp_for_filename())" }
+    try { $stamp = py -3.11 -m projectos.infrastructure.fleet_clock }
     catch { $stamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd_HHmm") + "-UTC-ASSUMED" }
     $target = Join-Path $ReportsDir "${stamp}_${Seat}_WAKE-FAILURE.md"
     "WAKE FAILURE ($Seat): $why" | Out-File -FilePath $target -Encoding utf8
@@ -31,11 +31,11 @@ if (-not (Test-Path $prompt)) { Write-WakeFailure "wake-prompt.md missing"; exit
 $cli = Get-Command claude -ErrorAction SilentlyContinue
 if ($null -eq $cli) { Write-WakeFailure "claude CLI not on PATH"; exit 2 }
 
-# --dangerously-skip-permissions is required for an unattended run (print
-# mode cannot answer permission prompts). The fence for a headless seat is
-# therefore the wake prompt's guardrails + INBOX-AUTH + the tiers module,
-# and the report to the founder says exactly that. Hardening to a
-# .claude/settings.json allowlist is proposed in the same report.
-claude -p (Get-Content $prompt -Raw) --dangerously-skip-permissions
+# No --dangerously-skip-permissions: the repo's tracked .claude/settings.json
+# allowlist governs the session (RATIFICATION-WAKE-CADENCE hardening). Print
+# mode cannot answer permission prompts, so anything outside the allowlist is
+# DENIED — the seat fails closed and reports BLOCKED instead of acting. The
+# fence is that allowlist + the wake prompt's guardrails + INBOX-AUTH + tiers.
+claude -p (Get-Content $prompt -Raw)
 if ($LASTEXITCODE -ne 0) { Write-WakeFailure "claude exited $LASTEXITCODE"; exit 1 }
 exit 0
