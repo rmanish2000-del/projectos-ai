@@ -17,11 +17,11 @@ import os
 import re
 import subprocess
 import sys
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 RESTOCKER_SEAT = "CHAT-AUTO-RESTOCK"
@@ -185,7 +185,7 @@ RunGit = Callable[[Sequence[str], Path], subprocess.CompletedProcess[str]]
 
 
 def _run_git(args: Sequence[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # noqa: S603 - argv only, fixed executable, shell=False
+    return subprocess.run(
         ["git", *args], cwd=cwd, text=True, capture_output=True, check=False
     )
 
@@ -206,7 +206,7 @@ def _atomic_text(path: Path, content: str) -> None:
 
 
 @contextlib.contextmanager
-def _exclusive_lock(path: Path) -> Iterable[None]:
+def _exclusive_lock(path: Path) -> Iterator[None]:
     """Hold one OS-released lock for the whole pass; never leave a stale lock."""
     path.parent.mkdir(parents=True, exist_ok=True)
     handle = path.open("a+b")
@@ -219,7 +219,9 @@ def _exclusive_lock(path: Path) -> Iterable[None]:
                 handle.flush()
             handle.seek(0)
             try:
-                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                locking = getattr(msvcrt, "locking")  # noqa: B009 -- Windows-only API
+                lock_nonblocking = getattr(msvcrt, "LK_NBLCK")  # noqa: B009
+                locking(handle.fileno(), lock_nonblocking, 1)
             except OSError as exc:
                 raise RestockError("pass_already_running") from exc
         else:
@@ -236,7 +238,9 @@ def _exclusive_lock(path: Path) -> Iterable[None]:
                 import msvcrt
 
                 handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                locking = getattr(msvcrt, "locking")  # noqa: B009 -- Windows-only API
+                unlock = getattr(msvcrt, "LK_UNLCK")  # noqa: B009
+                locking(handle.fileno(), unlock, 1)
             else:
                 import fcntl
 
@@ -250,9 +254,12 @@ def _load_state(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {"version": 1, "processed": {}, "inflight": None, "consumed": []}
     try:
-        state = json.loads(path.read_text(encoding="utf-8"))
+        raw_state: object = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise RestockError("marker_invalid") from exc
+    if not isinstance(raw_state, dict):
+        raise RestockError("marker_invalid")
+    state = cast(dict[str, Any], raw_state)
     if state.get("version") != 1 or not isinstance(state.get("processed"), dict):
         raise RestockError("marker_invalid")
     if not isinstance(state.get("consumed", []), list):
