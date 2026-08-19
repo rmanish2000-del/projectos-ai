@@ -10,7 +10,13 @@ param(
     [string]$Seat = "PROJECTOS",
     [string]$ReportsDir = "G:\My Drive\AGENT-REPORTS",
     # CHAT-AUTO-RESTOCK passes wake-prompt-chat.md; seat wakes use the default.
-    [string]$PromptFile = "wake-prompt.md"
+    [string]$PromptFile = "wake-prompt.md",
+    # ENGINE-AGNOSTIC-WAKE: how the session starts is a detail; what the seat
+    # owes (claim, report contract, AUTH, tripwires) is engine-independent.
+    # ValidateSet fails closed on unknown engines. Default = claude, byte-
+    # identical behaviour when unspecified.
+    [ValidateSet("claude", "codex")]
+    [string]$Engine = "claude"
 )
 
 $ErrorActionPreference = "Stop"
@@ -30,8 +36,9 @@ function Write-WakeFailure([string]$why) {
 
 $prompt = Join-Path $RepoRoot $PromptFile
 if (-not (Test-Path $prompt)) { Write-WakeFailure "$PromptFile missing"; exit 2 }
-$cli = Get-Command claude -ErrorAction SilentlyContinue
-if ($null -eq $cli) { Write-WakeFailure "claude CLI not on PATH"; exit 2 }
+$cliName = if ($Engine -eq "codex") { "codex" } else { "claude" }
+$cli = Get-Command $cliName -ErrorAction SilentlyContinue
+if ($null -eq $cli) { Write-WakeFailure "$cliName CLI not on PATH"; exit 2 }
 
 # No --dangerously-skip-permissions: the repo's tracked .claude/settings.json
 # allowlist governs the session (RATIFICATION-WAKE-CADENCE hardening). Print
@@ -48,11 +55,18 @@ $wakeStart = Get-Date
 $reportsBefore = @(Get-ChildItem $ReportsDir -File -ErrorAction SilentlyContinue |
     Select-Object -ExpandProperty Name)
 
-# Prompt goes via STDIN, never as an argument: PS 5.1 native-call quoting
-# mangles embedded double quotes, and the tripwire proof caught a prompt
-# truncating at its first inner quote (WAKE-TRIPWIRE-PROVEN, test 2). The
-# real wake prompts contain quotes, so the argument path is a live-fire bug.
-Get-Content $prompt -Raw | claude -p
+# Prompt goes via STDIN for EVERY engine, never as an argument: PS 5.1
+# native-call quoting mangles embedded double quotes, and the tripwire proof
+# caught a prompt truncating at its first inner quote (WAKE-TRIPWIRE-PROVEN,
+# test 2). The real wake prompts contain quotes, so the argument path is a
+# live-fire bug. Codex runs sandboxed (workspace-write + the reports dir as
+# an extra writable root) - the nearest equivalent of the Claude allowlist;
+# the differences are audited in the ENGINE-AGNOSTIC-WAKE report.
+if ($Engine -eq "codex") {
+    Get-Content $prompt -Raw | codex exec - -s workspace-write --add-dir $ReportsDir --skip-git-repo-check --color never
+} else {
+    Get-Content $prompt -Raw | claude -p
+}
 $claudeExit = $LASTEXITCODE
 
 $reportsAfter = @(Get-ChildItem $ReportsDir -File -ErrorAction SilentlyContinue |
