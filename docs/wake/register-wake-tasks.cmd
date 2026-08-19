@@ -17,9 +17,9 @@ REM  CHAT-AUTO-RESTOCK is budgeted SEPARATELY from that ceiling: every 20
 REM  minutes 09:00-19:00 IST = 31 passes/day, but a pass is verify/restock
 REM  or a heartbeat - no build work, no test gates, typically far shorter
 REM  than a seat wake. Worst day: 31 short sessions + 10 seat sessions.
-REM  The restocker prompt is wake-prompt-chat.md (its own contract, v4
-REM  rules inherited); it holds NO founder authority - anything needing
-REM  judgment lands in AGENT-REPORTS\FOUNDER-QUEUE.md.
+REM  The restocker is the deterministic Python engine invoked by wake.ps1;
+REM  it starts no model session. -PromptFile is retained for command-line
+REM  compatibility but is ignored on this seat. It holds NO founder authority.
 REM
 REM  PRECONDITIONS before running: wake-prompt.md + scripts\wake.ps1 exist in
 REM  each repo below (PROJECTOS's are committed; other seats commit their own
@@ -41,3 +41,4 @@ schtasks /create /tn "FLEET\WAKE-WARRANT-AM"   /tr "powershell -NoProfile -Execu
 schtasks /create /tn "FLEET\WAKE-WARRANT-PM"   /tr "powershell -NoProfile -ExecutionPolicy Bypass -File C:\Push-to-Prod-2026\warrant\scripts\wake.ps1 -RepoRoot C:\Push-to-Prod-2026\warrant -Seat WARRANT" /sc daily /st 18:30 /f
 
 echo Done. Verify with: schtasks /query /tn "FLEET\" /fo LIST
+
