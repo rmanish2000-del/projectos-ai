@@ -34,6 +34,30 @@ function Write-WakeFailure([string]$why) {
     # this wrapper's guaranteed signal is the Drive file above.
 }
 
+# CHAT-AUTO-RESTOCK is a deterministic program, not an agent session.
+# This branch is deliberately before prompt/CLI discovery: untrusted report
+# text can never enter the same context as instructions, and the restocker has
+# no model tools with which to merge, ratify, edit a repo, or self-issue.
+if ($Seat -eq "CHAT-AUTO-RESTOCK") {
+    $config = Join-Path $RepoRoot "docs\wake\chat-restock-config.json"
+    if (-not (Test-Path $config)) {
+        Write-WakeFailure "chat-restock-config.json missing"
+        exit 2
+    }
+    try {
+        py -3.11 -m projectos.infrastructure.chat_auto_restock --reports-dir $ReportsDir --config $config
+        $restockExit = $LASTEXITCODE
+    } catch {
+        Write-WakeFailure "deterministic restocker could not start"
+        exit 2
+    }
+    if ($restockExit -ne 0) {
+        Write-WakeFailure "deterministic restocker exited $restockExit"
+        exit 1
+    }
+    exit 0
+}
+
 $prompt = Join-Path $RepoRoot $PromptFile
 if (-not (Test-Path $prompt)) { Write-WakeFailure "$PromptFile missing"; exit 2 }
 $cliName = if ($Engine -eq "codex") { "codex" } else { "claude" }
@@ -102,3 +126,4 @@ if ($orphans.Count -gt 0) {
 }
 if ($claudeExit -ne 0) { Write-WakeFailure "claude exited $claudeExit"; exit 1 }
 exit 0
+
