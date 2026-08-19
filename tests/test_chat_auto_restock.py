@@ -12,8 +12,8 @@ from projectos.infrastructure.chat_auto_restock import (
     Config,
     PoolItem,
     Repository,
-    RestockError,
     Restocker,
+    RestockError,
     _assignment_body,
     _exclusive_lock,
     parse_pool,
@@ -177,7 +177,7 @@ def test_inflight_journal_recovers_without_duplicate_move(tmp_path: Path) -> Non
     report.write_text(_report_text(), encoding="utf-8")
 
     class CrashAfterSideEffect(Restocker):
-        def _process_report(self, path: Path, summary) -> None:  # noqa: ANN001
+        def _process_report(self, path: Path, summary) -> None
             super()._process_report(path, summary)
             raise RuntimeError("power loss")
 
@@ -215,9 +215,12 @@ def test_marker_never_advances_past_crashed_item(tmp_path: Path) -> None:
 
 def test_overlapping_pass_is_rejected_by_os_lock(tmp_path: Path) -> None:
     lock = tmp_path / ".CHAT-RESTOCK.lock"
-    with _exclusive_lock(lock), pytest.raises(RestockError, match="pass_already_running"):
-        with _exclusive_lock(lock):
-            raise AssertionError("second pass entered")
+    with (
+        _exclusive_lock(lock),
+        pytest.raises(RestockError, match="pass_already_running"),
+        _exclusive_lock(lock),
+    ):
+        raise AssertionError("second pass entered")
 
 
 def test_modified_processed_report_fails_closed(tmp_path: Path) -> None:
