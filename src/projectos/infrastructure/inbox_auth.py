@@ -42,6 +42,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -425,6 +426,145 @@ def batch_sign(
     return 1 if (failures or suspect) else 0
 
 
+#: Only files named like an assignment are ever auto-signed. A stray note,
+#: a draft, a synced conflict copy: none of them get fleet authority.
+ASSIGNMENT_NAME = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{4}_[A-Z][A-Z0-9-]*_.+\.md$")
+
+#: Per-sweep ceiling. The largest legitimate burst observed is a handful of
+#: assignments issued together, so 5 covers real work; beyond it a runaway
+#: writer is THROTTLED and, more importantly, ANNOUNCED — the cap-hit is
+#: logged loudly rather than hundreds of files being authorised in silence.
+AUTO_SIGN_CAP = 5
+
+#: Instant kill switch: create this file and the next sweep does nothing.
+#: A file, not a service stop, so it works with no privileges and reverses
+#: by deleting it.
+AUTO_SIGN_BRAKE = Path.home() / ".projectos" / "auto-sign.OFF"
+
+#: Machine-local audit log, beside the keyring — never in a repo, never on
+#: Drive. This is the record that replaces the founder's read-the-list step.
+AUTO_SIGN_LOG = Path.home() / ".projectos" / "auto-sign.log"
+
+
+@dataclass(frozen=True, slots=True)
+class AutoSignResult:
+    """One sweep, fully described."""
+
+    braked: bool = False
+    signed: tuple[str, ...] = ()
+    suspect: tuple[str, ...] = ()  # present-but-wrong stamps: incidents
+    skipped_name: tuple[str, ...] = ()  # not assignment-shaped
+    deferred: tuple[str, ...] = ()  # over the per-sweep cap
+
+    def summary(self) -> str:
+        parts = [f"signed={len(self.signed)}"]
+        if self.suspect:
+            parts.append(f"TAMPERED={len(self.suspect)}")
+        if self.deferred:
+            parts.append(f"CAP-HIT deferred={len(self.deferred)}")
+        if self.skipped_name:
+            parts.append(f"skipped-not-assignment={len(self.skipped_name)}")
+        return " ".join(parts)
+
+
+def auto_sign_once(
+    inbox_dir: Path,
+    keyring: dict[str, bytes],
+    *,
+    cap: int = AUTO_SIGN_CAP,
+    brake_path: Path | None = None,
+    log_path: Path | None = None,
+    drive_dir: Path | None = None,
+    stamp: str = "",
+) -> AutoSignResult:
+    """One auto-sign sweep of the INBOX (assignment AUTO-SIGNER).
+
+    Signs newly-arrived UNSIGNED assignment files with the fleet key so work
+    the founder directs from his phone stops silently stalling. The trade is
+    deliberate and bounded: it removes the human read-the-list step, and what
+    replaces it is this function's audit trail — every signature recorded
+    locally and on Drive where he can read it from the same phone.
+
+    Bounds, all enforced here rather than trusted to a caller: this directory
+    only (no recursion), assignment-named files only, never a second stamp on
+    an already-signed file, never a repair of a tampered one (that is an
+    incident: logged loudly, left refused), and never more than `cap` in one
+    sweep.
+    """
+    brake = brake_path or AUTO_SIGN_BRAKE
+    if brake.exists():
+        return AutoSignResult(braked=True)
+    if not inbox_dir.is_dir():
+        raise InvariantViolation(f"auto-sign: {inbox_dir} is not a directory")
+
+    candidates: list[Path] = []
+    suspect: list[str] = []
+    skipped: list[str] = []
+    for path in sorted(inbox_dir.glob("*.md")):
+        if not ASSIGNMENT_NAME.match(path.name):
+            skipped.append(path.name)
+            continue
+        verdict = verify_text(path.read_text(encoding="utf-8"), keyring, name=str(path))
+        if verdict.authentic:
+            continue  # already signed: never stamped twice
+        if "no AUTH stamp" in verdict.reason:
+            candidates.append(path)
+        else:
+            suspect.append(f"{path.name} :: {verdict.reason}")
+
+    deferred = [p.name for p in candidates[cap:]]
+    signed: list[str] = []
+    for path in candidates[:cap]:
+        path.write_text(sign_text(path.read_text(encoding="utf-8"), keyring), encoding="utf-8")
+        signed.append(path.name)
+
+    result = AutoSignResult(
+        signed=tuple(signed),
+        suspect=tuple(suspect),
+        skipped_name=tuple(skipped),
+        deferred=tuple(deferred),
+    )
+    _write_auto_sign_trail(result, stamp, log_path or AUTO_SIGN_LOG, drive_dir)
+    return result
+
+
+def _write_auto_sign_trail(
+    result: AutoSignResult, stamp: str, log_path: Path, drive_dir: Path | None
+) -> None:
+    """The audit trail: append-only locally and on Drive, plus a liveness
+    marker. A stopped watcher shows as a stale marker rather than silence."""
+    lines = [f"{stamp} auto-signed: {name}" for name in result.signed]
+    lines += [f"{stamp} TAMPERED STAMP, LEFT REFUSED: {item}" for item in result.suspect]
+    if result.deferred:
+        lines.append(
+            f"{stamp} CAP HIT ({len(result.deferred)} deferred to the next sweep) - "
+            f"an unusual burst, check who is writing: {', '.join(result.deferred)}"
+        )
+    if lines:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write("\n".join(lines) + "\n")
+    if drive_dir is None:
+        return
+    if lines:  # phone-readable audit, appended only when something happened
+        drive_log = drive_dir / "AUTO-SIGN-LOG.md"
+        header = (
+            ""
+            if drive_log.exists()
+            else "# AUTO-SIGN LOG - signatures made on the founder's behalf\n\n"
+        )
+        with drive_log.open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write(header + "\n".join(lines) + "\n")
+    # Liveness marker, rewritten every sweep: freshness IS the signal.
+    (drive_dir / "AUTO-SIGN-STATUS.md").write_text(
+        f"auto-signer last swept {stamp} IST - {result.summary()}\n"
+        f"A stamp much older than a few minutes means the watcher is STOPPED.\n"
+        f"Kill switch: create {AUTO_SIGN_BRAKE}\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     """`python -m projectos.infrastructure.inbox_auth {sign|verify|batch-sign} PATH`.
 
@@ -438,10 +578,10 @@ def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     vouch = "--vouch" in args
     args = [a for a in args if a != "--vouch"]
-    if len(args) != 2 or args[0] not in ("sign", "verify", "batch-sign"):
+    if len(args) != 2 or args[0] not in ("sign", "verify", "batch-sign", "auto-sign"):
         print(
             "usage: python -m projectos.infrastructure.inbox_auth "
-            "{sign|verify|batch-sign} PATH [--vouch]"
+            "{sign|verify|batch-sign|auto-sign} PATH [--vouch]"
         )
         return 2
     command, target = args[0], Path(args[1])
@@ -453,6 +593,24 @@ def main(argv: list[str] | None = None) -> int:
 
     if command == "batch-sign":
         return batch_sign(target, keyring, vouch=vouch)
+
+    if command == "auto-sign":
+        from projectos.infrastructure.fleet_clock import now_ist
+
+        result = auto_sign_once(
+            target, keyring, drive_dir=target.parent, stamp=now_ist().strftime("%Y-%m-%d %H:%M")
+        )
+        if result.braked:
+            print("auto-sign: BRAKE FILE PRESENT - did nothing")
+            return 0
+        print(f"auto-sign: {result.summary()}")
+        for name in result.signed:
+            print(f"  signed: {name}")
+        for item in result.suspect:
+            print(f"  TAMPERED, left refused: {item}")
+        # A tampered stamp is an incident: exit nonzero so a scheduled run
+        # surfaces it rather than logging into the void.
+        return 1 if result.suspect else 0
 
     if command == "sign":
         signed = sign_text(target.read_text(encoding="utf-8"), keyring)

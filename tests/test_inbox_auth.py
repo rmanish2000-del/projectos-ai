@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -15,6 +16,7 @@ from projectos.infrastructure.inbox_auth import (
     ENFORCEMENT_PARAM,
     MODE_ENFORCING,
     MODE_TOLERANT,
+    AutoSignResult,
     KeyUnavailable,
     load_keyring,
     main,
@@ -225,9 +227,15 @@ class TestTransitionSwitch:
         )
         return path
 
-    def test_shipped_registry_declares_tolerant(self) -> None:
-        # The ordered default: built, present, and tolerant until flipped.
-        assert resolve_enforcement(REPO_ROOT / "docs" / "parameter_registry.json") == MODE_TOLERANT
+    def test_shipped_registry_declares_a_recognised_mode(self) -> None:
+        # The VALUE is founder-controlled (tolerant until 2026-08-18, enforcing
+        # after his flip), so pinning it here would make a founder act break
+        # the build. What must always hold is that the shipped row declares a
+        # mode this code recognises - an unknown value raises, never defaults.
+        assert resolve_enforcement(REPO_ROOT / "docs" / "parameter_registry.json") in (
+            MODE_TOLERANT,
+            MODE_ENFORCING,
+        )
 
     def test_missing_registry_defaults_tolerant(self, tmp_path: Path) -> None:
         # Inverted failure direction, deliberately: an enforcing seat with no
@@ -363,6 +371,117 @@ class TestBatchSign:
         assert "declined" in capsys.readouterr().out
 
 
+class TestAutoSign:
+    """Bounded auto-signing (AUTO-SIGNER). The trade is real, so every bound
+    that keeps it bounded is pinned here."""
+
+    def _inbox(self, tmp_path: Path) -> Path:
+        inbox = tmp_path / "INBOX"
+        inbox.mkdir()
+        (inbox / "2026-08-19_0900_PROJECTOS_ONE.md").write_text("A\n", encoding="utf-8")
+        (inbox / "2026-08-19_0901_TRADEOS_TWO.md").write_text("B\n", encoding="utf-8")
+        return inbox
+
+    def _sweep(self, inbox: Path, tmp_path: Path, **kwargs: Any) -> AutoSignResult:
+        from projectos.infrastructure.inbox_auth import auto_sign_once
+
+        kwargs.setdefault("brake_path", tmp_path / "no-brake")
+        kwargs.setdefault("log_path", tmp_path / "auto-sign.log")
+        kwargs.setdefault("stamp", "2026-08-19 09:00")
+        return auto_sign_once(inbox, KEY, **kwargs)
+
+    def test_unsigned_assignments_are_signed(self, tmp_path: Path) -> None:
+        inbox = self._inbox(tmp_path)
+        result = self._sweep(inbox, tmp_path)
+        assert len(result.signed) == 2
+        for path in inbox.iterdir():
+            assert verify_text(path.read_text(encoding="utf-8"), KEY).authentic
+
+    def test_already_signed_file_is_never_stamped_twice(self, tmp_path: Path) -> None:
+        inbox = self._inbox(tmp_path)
+        self._sweep(inbox, tmp_path)
+        before = (inbox / "2026-08-19_0900_PROJECTOS_ONE.md").read_text(encoding="utf-8")
+        second = self._sweep(inbox, tmp_path)
+        assert second.signed == ()
+        after = (inbox / "2026-08-19_0900_PROJECTOS_ONE.md").read_text(encoding="utf-8")
+        assert after == before
+        assert after.count(AUTH_PREFIX) == 1
+
+    def test_tampered_stamp_is_left_refused_and_reported(self, tmp_path: Path) -> None:
+        inbox = self._inbox(tmp_path)
+        target = inbox / "2026-08-19_0902_AIW_TAMPERED.md"
+        tampered = sign_text("original\n", KEY).replace("original", "altered")
+        target.write_text(tampered, encoding="utf-8")
+        result = self._sweep(inbox, tmp_path)
+        assert any("TAMPERED" in s or "does not match" in s for s in result.suspect)
+        # An incident is never repaired into a pass.
+        assert target.read_text(encoding="utf-8") == tampered
+
+    def test_non_assignment_names_are_never_signed(self, tmp_path: Path) -> None:
+        inbox = self._inbox(tmp_path)
+        for stray in ("notes.md", "CHAT-HANDOFF.md", "2026-08-19 draft.md"):
+            (inbox / stray).write_text("stray\n", encoding="utf-8")
+        result = self._sweep(inbox, tmp_path)
+        assert len(result.skipped_name) == 3
+        for stray in ("notes.md", "CHAT-HANDOFF.md", "2026-08-19 draft.md"):
+            assert AUTH_PREFIX not in (inbox / stray).read_text(encoding="utf-8")
+
+    def test_per_sweep_cap_throttles_and_announces(self, tmp_path: Path) -> None:
+        inbox = self._inbox(tmp_path)
+        for n in range(3, 9):  # a burst well past the cap
+            (inbox / f"2026-08-19_09{n:02d}_WEB_BURST{n}.md").write_text("x\n", encoding="utf-8")
+        result = self._sweep(inbox, tmp_path, cap=5)
+        assert len(result.signed) == 5
+        assert result.deferred  # the rest wait, and are named
+        assert "CAP-HIT" in result.summary()
+        log = (tmp_path / "auto-sign.log").read_text(encoding="utf-8")
+        assert "CAP HIT" in log  # loud, not silent
+
+    def test_brake_file_stops_the_sweep_dead(self, tmp_path: Path) -> None:
+        inbox = self._inbox(tmp_path)
+        brake = tmp_path / "auto-sign.OFF"
+        brake.write_text("stop\n", encoding="utf-8")
+        result = self._sweep(inbox, tmp_path, brake_path=brake)
+        assert result.braked
+        assert result.signed == ()
+        for path in inbox.iterdir():
+            assert AUTH_PREFIX not in path.read_text(encoding="utf-8")
+
+    def test_never_recurses_into_subdirectories(self, tmp_path: Path) -> None:
+        inbox = self._inbox(tmp_path)
+        nested = inbox / "sub"
+        nested.mkdir()
+        (nested / "2026-08-19_0905_WEB_NESTED.md").write_text("n\n", encoding="utf-8")
+        self._sweep(inbox, tmp_path)
+        assert AUTH_PREFIX not in (nested / "2026-08-19_0905_WEB_NESTED.md").read_text(
+            encoding="utf-8"
+        )
+
+    def test_drive_trail_carries_audit_and_liveness(self, tmp_path: Path) -> None:
+        inbox = self._inbox(tmp_path)
+        drive = tmp_path / "drive"
+        drive.mkdir()
+        self._sweep(inbox, tmp_path, drive_dir=drive)
+        audit = (drive / "AUTO-SIGN-LOG.md").read_text(encoding="utf-8")
+        assert "auto-signed: 2026-08-19_0900_PROJECTOS_ONE.md" in audit
+        status = (drive / "AUTO-SIGN-STATUS.md").read_text(encoding="utf-8")
+        assert "last swept 2026-08-19 09:00" in status
+        assert "Kill switch" in status
+
+    def test_quiet_sweep_still_refreshes_liveness(self, tmp_path: Path) -> None:
+        # Nothing to sign must still prove the watcher is alive - a stale
+        # marker is how a stopped watcher is detected.
+        inbox = tmp_path / "EMPTY"
+        inbox.mkdir()
+        drive = tmp_path / "drive"
+        drive.mkdir()
+        self._sweep(inbox, tmp_path, drive_dir=drive, stamp="2026-08-19 09:30")
+        assert "last swept 2026-08-19 09:30" in (drive / "AUTO-SIGN-STATUS.md").read_text(
+            encoding="utf-8"
+        )
+        assert not (drive / "AUTO-SIGN-LOG.md").exists()  # no noise when nothing happened
+
+
 class TestCli:
     def test_sign_then_verify_round_trip(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -381,8 +500,15 @@ class TestCli:
     def test_verify_unsigned_in_tolerant_mode_acts_but_says_so(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
+        # A synthetic tolerant registry, not the live one: the shipped value is
+        # the founder's to flip, and this test is about the MODE's behaviour.
         monkeypatch.setenv("PROJECTOS_INBOX_KEY", "k1:cli-drill-key")
-        monkeypatch.chdir(REPO_ROOT)
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "parameter_registry.json").write_text(
+            json.dumps({"parameters": {ENFORCEMENT_PARAM: {"value": "tolerant"}}}),
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
         target = tmp_path / "unsigned.md"
         target.write_text(ASSIGNMENT, encoding="utf-8")
         assert main(["verify", str(target)]) == 0
