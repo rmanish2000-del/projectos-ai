@@ -21,6 +21,17 @@ REM  The restocker prompt is wake-prompt-chat.md (its own contract, v4
 REM  rules inherited); it holds NO founder authority - anything needing
 REM  judgment lands in AGENT-REPORTS\FOUNDER-QUEUE.md.
 REM
+REM  HIDDEN WINDOWS (PROJECTOS-HIDDEN-TASKS-02). Every action below launches
+REM  through scripts\run-hidden.vbs instead of powershell.exe directly, so no
+REM  console flashes over the founder's screen. The shim keeps the SAME
+REM  interactive user, so the mapped G: drive and the k1 keyring under
+REM  %USERPROFILE% both still resolve, and it passes the child's exit code
+REM  straight through - a failing wake still writes its WAKE-FAILURE file and
+REM  still shows a nonzero Last Result. Do NOT "simplify" this to
+REM  -WindowStyle Hidden (the console is allocated before it is hidden, so it
+REM  flashes) or to run-whether-logged-on / SYSTEM (session 0 has no G: and
+REM  no user profile, which breaks reading the INBOX and the key).
+REM
 REM  PRECONDITIONS before running: wake-prompt.md + scripts\wake.ps1 exist in
 REM  each repo below (PROJECTOS's are committed; other seats commit their own
 REM  copies from the template in the REMOVE-THE-GO report), and the founder
