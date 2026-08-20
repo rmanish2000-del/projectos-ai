@@ -28,4 +28,55 @@ if (-not (Test-Path $InboxDir)) {
 }
 
 py -3.11 -m projectos.infrastructure.inbox_auth auto-sign $InboxDir
-exit $LASTEXITCODE
+$signExit = $LASTEXITCODE
+
+# ---------------------------------------------------------------------------
+# TASK-TARGET CHECK (WAKE-SCRIPT-DISTRIBUTION item 6). On 2026-08-20 every
+# seat but one had a registered, Ready, correctly-triggered wake task whose
+# target script DID NOT EXIST - four of five seats could not run for hours
+# and Task Scheduler still showed them Ready, because "Ready" means the
+# trigger is armed, not that the action can execute.
+#
+# This runs here because the two-minute signer is the one thing that fires
+# reliably. It writes to Drive ONLY when something is wrong, so a healthy
+# fleet stays silent and an alert file means exactly one thing.
+# ---------------------------------------------------------------------------
+try {
+    $reportsDir = Split-Path $InboxDir -Parent
+    $missing = @()
+    foreach ($task in (Get-ScheduledTask -TaskPath "\FLEET\" -ErrorAction SilentlyContinue)) {
+        $arguments = $task.Actions[0].Arguments
+        # Pull every -File target out of the action, whether it is launched
+        # directly or through the hidden shim.
+        foreach ($m in [regex]::Matches($arguments, '-File\s+"?([A-Za-z]:\\[^"\s]+)"?')) {
+            $target = $m.Groups[1].Value
+            if (-not (Test-Path $target)) { $missing += "$($task.TaskName) -> $target" }
+        }
+        # The shim itself is a target too.
+        foreach ($m in [regex]::Matches($arguments, '([A-Za-z]:\\[^"\s]+\.vbs)')) {
+            $target = $m.Groups[1].Value
+            if (-not (Test-Path $target)) { $missing += "$($task.TaskName) -> $target" }
+        }
+    }
+    $alert = Join-Path $reportsDir "FLEET-TASK-TARGET-ALERT.md"
+    if ($missing.Count -gt 0) {
+        $lines = @(
+            "# ALERT - registered task points at a script that does not exist",
+            "",
+            "A task can be Ready, correctly triggered and still incapable of running:",
+            "Ready means the trigger is armed, not that the action can execute. Each",
+            "line below is a task that will fail every time it fires until the file",
+            "is placed.",
+            ""
+        ) + ($missing | Sort-Object -Unique)
+        Set-Content -Path $alert -Value $lines -Encoding utf8
+    } elseif (Test-Path $alert) {
+        # Healthy again: clear the alert rather than leaving a stale scare.
+        Remove-Item -LiteralPath $alert -Force -ErrorAction SilentlyContinue
+    }
+} catch {
+    # A check that cannot run must not take the signer down with it.
+    Write-Output "auto-sign: task-target check could not run: $($_.Exception.Message)"
+}
+
+exit $signExit
