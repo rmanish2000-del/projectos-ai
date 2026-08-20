@@ -1,10 +1,12 @@
-﻿# Headless seat wake wrapper (REMOVE-THE-GO). One wake = one loop pass.
+# Headless seat wake wrapper (REMOVE-THE-GO). One wake = one loop pass.
 # Launched by Task Scheduler; runnable by hand for a dry-run. The prompt is
 # wake-prompt.md in the repo root - versioned, never an inline string here.
 #
-# Exit codes: 0 = loop completed (work or heartbeat) - 1 = claude exited
-# nonzero - 2 = could not even start (missing prompt/CLI); both failure
-# paths leave a WAKE-FAILURE file on Drive so silence is impossible.
+# Exit codes: 0 = loop completed, or a normal skip because the seat was
+# already running - 1 = the engine exited nonzero, or a wrapper tripwire
+# fired - 2 = could not even start (missing prompt/CLI). Every real failure
+# leaves a WAKE-FAILURE file on Drive so silence is impossible. A SKIP is
+# not a failure and deliberately leaves nothing on Drive.
 param(
     [string]$RepoRoot = "C:\ProjectOS-AI",
     [string]$Seat = "PROJECTOS",
@@ -22,6 +24,20 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location $RepoRoot
 
+# Machine-local state, beside the keyring: never on Drive, so a 20-minute
+# cadence cannot flood the report channel with its own bookkeeping.
+$StateDir = Join-Path $env:USERPROFILE ".projectos"
+if (-not (Test-Path $StateDir)) { New-Item -ItemType Directory -Force $StateDir | Out-Null }
+$LockFile = Join-Path $StateDir "wake-$Seat.lock"
+$LocalLog = Join-Path $StateDir "wake-$Seat.log"
+$UsageLog = Join-Path $StateDir "wake-usage.log"
+$script:HoldsLock = $false
+
+function Write-LocalLog([string]$line) {
+    $when = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    Add-Content -Path $LocalLog -Value "$when [$Seat] $line" -Encoding utf8
+}
+
 function Write-WakeFailure([string]$why) {
     # Fleet-clock stamp when python is reachable; raw UTC marked ASSUMED when
     # it is not - a failure record with a suspect stamp beats no record.
@@ -29,16 +45,109 @@ function Write-WakeFailure([string]$why) {
     catch { $stamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd_HHmm") + "-UTC-ASSUMED" }
     $target = Join-Path $ReportsDir "${stamp}_${Seat}_WAKE-FAILURE.md"
     "WAKE FAILURE ($Seat): $why" | Out-File -FilePath $target -Encoding utf8
+    Write-LocalLog "WAKE-FAILURE: $why"
     # Telegram escalation rides the existing TradeOS alert rail; wiring it is
     # a TRADEOS-seat integration (flagged in the REMOVE-THE-GO report), so
     # this wrapper's guaranteed signal is the Drive file above.
 }
 
+function Release-SeatLock {
+    # Only ever release a lock this process actually owns. A wake that skipped
+    # because another session held the lock must never delete that lock.
+    if (-not $script:HoldsLock) { return }
+    if (Test-Path $LockFile) {
+        $raw = Get-Content $LockFile -Raw -ErrorAction SilentlyContinue
+        if ($raw -match "pid=$PID(\D|$)") { Remove-Item $LockFile -Force -ErrorAction SilentlyContinue }
+    }
+    $script:HoldsLock = $false
+}
+
+function Exit-Wake([int]$code) {
+    Release-SeatLock
+    exit $code
+}
+
+# ---------------------------------------------------------------------------
+# PER-SEAT LOCK (20-minute cadence). Two sessions of one seat overlapping can
+# double-claim an assignment and corrupt Drive state, so a seat is serialized.
+#
+# Staleness is decided by PROVING THE OWNER IS DEAD, not by a timeout: the
+# lock records the owner's pid AND that process's exact start time, so a
+# recycled pid cannot masquerade as a live owner, and a legitimately long
+# session is never displaced no matter how long it runs. A blind timeout was
+# rejected for exactly that reason - it would kill a slow gate mid-run.
+# ---------------------------------------------------------------------------
+if (Test-Path $LockFile) {
+    $raw = Get-Content $LockFile -Raw -ErrorAction SilentlyContinue
+    $ownerPid = 0
+    $ownerTicks = ""
+    if ($raw -match "pid=(\d+)") { $ownerPid = [int]$Matches[1] }
+    if ($raw -match "startticks=(\d+)") { $ownerTicks = $Matches[1] }
+    $owner = $null
+    if ($ownerPid -gt 0) { $owner = Get-Process -Id $ownerPid -ErrorAction SilentlyContinue }
+    $ownerIsLive = $false
+    if ($null -ne $owner) {
+        # Same pid AND same start time = genuinely the process that took the
+        # lock. Same pid, different start time = the pid was recycled and the
+        # real owner is long gone.
+        try { $ownerIsLive = ($owner.StartTime.Ticks.ToString() -eq $ownerTicks) }
+        catch { $ownerIsLive = $true }  # cannot read it: assume live, never displace
+    }
+    if ($ownerIsLive) {
+        # Normal skip. Not a failure: no WAKE-FAILURE, no Drive report, and
+        # the running session is left completely alone to finish and report.
+        Write-LocalLog "SKIP: seat already running (owner pid $ownerPid); this wake exits without claiming"
+        exit 0
+    }
+    Write-LocalLog "STALE LOCK cleared: owner pid $ownerPid is not alive (recorded start $ownerTicks)"
+    Remove-Item $LockFile -Force -ErrorAction SilentlyContinue
+}
+
+$self = Get-Process -Id $PID
+@(
+    "pid=$PID",
+    "startticks=$($self.StartTime.Ticks)",
+    "seat=$Seat",
+    "engine=$Engine",
+    "since=$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))"
+) | Set-Content -Path $LockFile -Encoding utf8
+$script:HoldsLock = $true
+
+# Usage visibility: one appended line per session. Session counts and engines
+# are real; provider token counts are NOT available to this wrapper and are
+# deliberately never estimated.
+$today = (Get-Date).ToString("yyyy-MM-dd")
+Add-Content -Path $UsageLog -Value "$today|$Seat|$Engine" -Encoding utf8
+
+# CHAT-AUTO-RESTOCK is a deterministic program, not an agent session.
+# This branch is deliberately before prompt/CLI discovery: untrusted report
+# text can never enter the same context as instructions, and the restocker has
+# no model tools with which to merge, ratify, edit a repo, or self-issue.
+if ($Seat -eq "CHAT-AUTO-RESTOCK") {
+    $config = Join-Path $RepoRoot "docs\wake\chat-restock-config.json"
+    if (-not (Test-Path $config)) {
+        Write-WakeFailure "chat-restock-config.json missing"
+        Exit-Wake 2
+    }
+    try {
+        py -3.11 -m projectos.infrastructure.chat_auto_restock --reports-dir $ReportsDir --config $config
+        $restockExit = $LASTEXITCODE
+    } catch {
+        Write-WakeFailure "deterministic restocker could not start"
+        Exit-Wake 2
+    }
+    if ($restockExit -ne 0) {
+        Write-WakeFailure "deterministic restocker exited $restockExit"
+        Exit-Wake 1
+    }
+    Exit-Wake 0
+}
+
 $prompt = Join-Path $RepoRoot $PromptFile
-if (-not (Test-Path $prompt)) { Write-WakeFailure "$PromptFile missing"; exit 2 }
+if (-not (Test-Path $prompt)) { Write-WakeFailure "$PromptFile missing"; Exit-Wake 2 }
 $cliName = if ($Engine -eq "codex") { "codex" } else { "claude" }
 $cli = Get-Command $cliName -ErrorAction SilentlyContinue
-if ($null -eq $cli) { Write-WakeFailure "$cliName CLI not on PATH"; exit 2 }
+if ($null -eq $cli) { Write-WakeFailure "$cliName CLI not on PATH"; Exit-Wake 2 }
 
 # No --dangerously-skip-permissions: the repo's tracked .claude/settings.json
 # allowlist governs the session (RATIFICATION-WAKE-CADENCE hardening). Print
@@ -83,7 +192,23 @@ $newOutcomes = @($new | Where-Object {
 # masking it when both fire (WAKE-TRIPWIRE-PROVEN, test 1).
 if ($newClaims.Count -gt 0 -and $newOutcomes.Count -eq 0) {
     Write-WakeFailure "v4 report-contract breach: wake claimed ($($newClaims -join ', ')) and exited with NO report on Drive"
-    exit 1
+    Exit-Wake 1
+}
+
+# QUIET IDLE WAKES. At 20-minute cadence an idle heartbeat per wake would be
+# ~30 files per seat per day, which buries the reports channel it exists to
+# make readable. An idle wake is one that claimed nothing and produced only a
+# heartbeat: the heartbeat is removed from Drive and recorded locally instead.
+# Enforced here rather than in the prompt so the seat's instructions are
+# untouched - and so an agent that forgets cannot flood the channel anyway.
+if ($newClaims.Count -eq 0) {
+    $idleOnly = @($newOutcomes | Where-Object { $_ -match "HEARTBEAT" })
+    if ($idleOnly.Count -gt 0 -and $idleOnly.Count -eq $newOutcomes.Count) {
+        foreach ($name in $idleOnly) {
+            Remove-Item -LiteralPath (Join-Path $ReportsDir $name) -Force -ErrorAction SilentlyContinue
+        }
+        Write-LocalLog "IDLE: nothing claimable; suppressed Drive heartbeat ($($idleOnly -join ', '))"
+    }
 }
 
 # Backgrounded work left alive is the other half of the same defect: a
@@ -98,7 +223,31 @@ if ($orphans.Count -gt 0) {
     $names = ($orphans | ForEach-Object { "$($_.ProcessName):$($_.Id)" }) -join ", "
     $orphans | Stop-Process -Force -ErrorAction SilentlyContinue
     Write-WakeFailure "wake left running processes ($names) - backgrounded work has no owner after exit; stopped"
-    exit 1
+    Exit-Wake 1
 }
-if ($claudeExit -ne 0) { Write-WakeFailure "claude exited $claudeExit"; exit 1 }
-exit 0
+if ($claudeExit -ne 0) { Write-WakeFailure "engine exited $claudeExit"; Exit-Wake 1 }
+
+# Phone-readable usage line, appended (never rewritten, so seats waking
+# concurrently cannot race). Date, seat, engine and this seat's session count
+# for today - all measured, with no invented token numbers.
+try {
+    $todaysSessions = @(Get-Content $UsageLog -ErrorAction SilentlyContinue |
+        Where-Object { $_ -like "$today|$Seat|*" }).Count
+    $usageDrive = Join-Path $ReportsDir "FLEET-USAGE.md"
+    if (-not (Test-Path $usageDrive)) {
+        Set-Content -Path $usageDrive -Encoding utf8 -Value @(
+            "# FLEET USAGE - one line per completed wake session",
+            "",
+            "Session counts and engines are measured. Provider token counts are NOT",
+            "available to the wrapper and are never estimated here.",
+            ""
+        )
+    }
+    Add-Content -Path $usageDrive -Encoding utf8 `
+        -Value "$today | $Seat | engine=$Engine | session #$todaysSessions today"
+} catch {
+    Write-LocalLog "usage line could not be written: $($_.Exception.Message)"
+}
+
+Write-LocalLog "OK: wake completed (engine=$Engine)"
+Exit-Wake 0
