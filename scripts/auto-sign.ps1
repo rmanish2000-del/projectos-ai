@@ -47,10 +47,15 @@ try {
     foreach ($task in (Get-ScheduledTask -TaskPath "\FLEET\" -ErrorAction SilentlyContinue)) {
         $arguments = $task.Actions[0].Arguments
         # Pull every -File target out of the action, whether it is launched
-        # directly or through the hidden shim.
-        foreach ($m in [regex]::Matches($arguments, '-File\s+"?([A-Za-z]:\\[^"\s]+)"?')) {
-            $target = $m.Groups[1].Value
-            if (-not (Test-Path $target)) { $missing += "$($task.TaskName) -> $target" }
+        # directly or through the hidden shim. The quoted alternative must come
+        # first and must not exclude spaces: LEOS lives at a path containing
+        # spaces, en-dashes, parentheses and a full stop, and a space-excluding
+        # pattern truncates it to "C:\Urjadata" - a path that never exists, so
+        # the watchdog would raise a permanent false alert against a healthy
+        # seat and teach the fleet to ignore it.
+        foreach ($m in [regex]::Matches($arguments, '-File\s+(?:"([^"]+)"|([A-Za-z]:\\[^"\s]+))')) {
+            $target = if ($m.Groups[1].Success) { $m.Groups[1].Value } else { $m.Groups[2].Value }
+            if (-not (Test-Path -LiteralPath $target)) { $missing += "$($task.TaskName) -> $target" }
         }
         # The shim itself is a target too.
         foreach ($m in [regex]::Matches($arguments, '([A-Za-z]:\\[^"\s]+\.vbs)')) {
