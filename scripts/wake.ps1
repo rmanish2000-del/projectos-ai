@@ -67,6 +67,33 @@ function Exit-Wake([int]$code) {
     exit $code
 }
 
+function Write-UsageLine {
+    # Phone-readable usage, appended (never rewritten, so seats waking
+    # concurrently cannot race). Date, seat, engine and this seat's session
+    # count for today - all measured. Provider token counts are NOT available
+    # to this wrapper and are deliberately never estimated.
+    try {
+        $day = (Get-Date).ToString("yyyy-MM-dd")
+        $todaysSessions = @(Get-Content $UsageLog -ErrorAction SilentlyContinue |
+            Where-Object { $_ -like "$day|$Seat|*" }).Count
+        $usageDrive = Join-Path $ReportsDir "FLEET-USAGE.md"
+        if (-not (Test-Path $usageDrive)) {
+            Set-Content -Path $usageDrive -Encoding utf8 -Value @(
+                "# FLEET USAGE - one line per wake session that reached an engine",
+                "",
+                "Session counts and engines are measured. Provider token counts are NOT",
+                "available to the wrapper and are never estimated here. A failed session",
+                "still counts: it consumed quota.",
+                ""
+            )
+        }
+        Add-Content -Path $usageDrive -Encoding utf8 `
+            -Value "$day | $Seat | engine=$Engine | session #$todaysSessions today"
+    } catch {
+        Write-LocalLog "usage line could not be written: $($_.Exception.Message)"
+    }
+}
+
 # ---------------------------------------------------------------------------
 # PER-SEAT LOCK (20-minute cadence). Two sessions of one seat overlapping can
 # double-claim an assignment and corrupt Drive state, so a seat is serialized.
@@ -178,6 +205,13 @@ if ($Engine -eq "codex") {
 }
 $claudeExit = $LASTEXITCODE
 
+# Usage is recorded HERE, immediately after the engine returns, and NOT on
+# the success path only: a wake that reached the engine consumed a session
+# whether or not it then succeeded. Counting only successes would hide
+# exactly the days worth watching - the ones where sessions are being burned
+# on failures.
+Write-UsageLine
+
 $reportsAfter = @(Get-ChildItem $ReportsDir -File -ErrorAction SilentlyContinue |
     Select-Object -ExpandProperty Name)
 $new = @($reportsAfter | Where-Object { $reportsBefore -notcontains $_ })
@@ -226,28 +260,6 @@ if ($orphans.Count -gt 0) {
     Exit-Wake 1
 }
 if ($claudeExit -ne 0) { Write-WakeFailure "engine exited $claudeExit"; Exit-Wake 1 }
-
-# Phone-readable usage line, appended (never rewritten, so seats waking
-# concurrently cannot race). Date, seat, engine and this seat's session count
-# for today - all measured, with no invented token numbers.
-try {
-    $todaysSessions = @(Get-Content $UsageLog -ErrorAction SilentlyContinue |
-        Where-Object { $_ -like "$today|$Seat|*" }).Count
-    $usageDrive = Join-Path $ReportsDir "FLEET-USAGE.md"
-    if (-not (Test-Path $usageDrive)) {
-        Set-Content -Path $usageDrive -Encoding utf8 -Value @(
-            "# FLEET USAGE - one line per completed wake session",
-            "",
-            "Session counts and engines are measured. Provider token counts are NOT",
-            "available to the wrapper and are never estimated here.",
-            ""
-        )
-    }
-    Add-Content -Path $usageDrive -Encoding utf8 `
-        -Value "$today | $Seat | engine=$Engine | session #$todaysSessions today"
-} catch {
-    Write-LocalLog "usage line could not be written: $($_.Exception.Message)"
-}
 
 Write-LocalLog "OK: wake completed (engine=$Engine)"
 Exit-Wake 0
