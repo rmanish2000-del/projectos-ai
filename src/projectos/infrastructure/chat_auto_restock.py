@@ -22,7 +22,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
-from zoneinfo import ZoneInfo
+
+from projectos.infrastructure.fleet_clock import now_ist
 
 RESTOCKER_SEAT = "CHAT-AUTO-RESTOCK"
 MARKER_NAME = "CHAT-RESTOCK-MARKER.json"
@@ -208,10 +209,14 @@ def _atomic_text(path: Path, content: str) -> None:
 @contextlib.contextmanager
 def _exclusive_lock(path: Path) -> Iterator[None]:
     """Hold one OS-released lock for the whole pass; never leave a stale lock."""
+    # Branch on sys.platform, NOT os.name: the runtime behaviour is identical,
+    # but mypy narrows platform branches only on sys.platform, so with os.name
+    # it type-checked the POSIX branch on Windows and flagged every fcntl
+    # attribute as missing (RESTOCKER-GATE-FIXES item 2). Typing fix only.
     path.parent.mkdir(parents=True, exist_ok=True)
     handle = path.open("a+b")
     try:
-        if os.name == "nt":
+        if sys.platform == "win32":
             import msvcrt
 
             if path.stat().st_size == 0:
@@ -219,9 +224,7 @@ def _exclusive_lock(path: Path) -> Iterator[None]:
                 handle.flush()
             handle.seek(0)
             try:
-                locking = getattr(msvcrt, "locking")  # noqa: B009 -- Windows-only API
-                lock_nonblocking = getattr(msvcrt, "LK_NBLCK")  # noqa: B009
-                locking(handle.fileno(), lock_nonblocking, 1)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
             except OSError as exc:
                 raise RestockError("pass_already_running") from exc
         else:
@@ -234,13 +237,11 @@ def _exclusive_lock(path: Path) -> Iterator[None]:
         yield
     finally:
         try:
-            if os.name == "nt":
+            if sys.platform == "win32":
                 import msvcrt
 
                 handle.seek(0)
-                locking = getattr(msvcrt, "locking")  # noqa: B009 -- Windows-only API
-                unlock = getattr(msvcrt, "LK_UNLCK")  # noqa: B009
-                locking(handle.fileno(), unlock, 1)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
             else:
                 import fcntl
 
@@ -522,7 +523,11 @@ class Restocker:
         self.marker = reports_dir / MARKER_NAME
         self.config = config
         self.run_git = run_git
-        self.now = now or (lambda: datetime.now(ZoneInfo("Asia/Kolkata")))
+        # fleet_clock, not a named-zone lookup: ZoneInfo("Asia/Kolkata") needs
+        # tzdata, which is not a declared dependency, so this crashed at startup
+        # in any clean environment (RESTOCKER-GATE-FIXES item 3). fleet_clock
+        # converts by a fixed +05:30 offset and RAISES rather than guessing.
+        self.now = now or now_ist
 
     def _stamp(self) -> str:
         return self.now().strftime("%Y-%m-%d_%H%M")

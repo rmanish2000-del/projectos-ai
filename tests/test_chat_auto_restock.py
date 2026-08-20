@@ -4,7 +4,7 @@ import json
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
+from typing import Any
 
 import pytest
 
@@ -19,9 +19,13 @@ from projectos.infrastructure.chat_auto_restock import (
     parse_pool,
     parse_report,
 )
+from projectos.infrastructure.fleet_clock import IST
 
 SHA = "a" * 40
-NOW = datetime(2026, 8, 19, 11, 7, tzinfo=ZoneInfo("Asia/Kolkata"))
+# fleet_clock's fixed +05:30 IST, not ZoneInfo("Asia/Kolkata"): the named-zone
+# lookup needs tzdata, which is undeclared, so it made this file uncollectable
+# in any clean environment (RESTOCKER-GATE-FIXES item 3, second instance).
+NOW = datetime(2026, 8, 19, 11, 7, tzinfo=IST)
 
 
 def _config(tmp_path: Path) -> Config:
@@ -177,7 +181,7 @@ def test_inflight_journal_recovers_without_duplicate_move(tmp_path: Path) -> Non
     report.write_text(_report_text(), encoding="utf-8")
 
     class CrashAfterSideEffect(Restocker):
-        def _process_report(self, path: Path, summary) -> None
+        def _process_report(self, path: Path, summary: Any) -> None:
             super()._process_report(path, summary)
             raise RuntimeError("power loss")
 
@@ -202,7 +206,7 @@ def test_marker_never_advances_past_crashed_item(tmp_path: Path) -> None:
     second.write_text(_report_text(), encoding="utf-8")
 
     class CrashFirst(Restocker):
-        def _process_report(self, path: Path, summary) -> None:  # noqa: ANN001
+        def _process_report(self, path: Path, summary: Any) -> None:
             raise RuntimeError(path.name)
 
     with pytest.raises(RuntimeError, match="C-P1"):

@@ -20,6 +20,12 @@ read-only object/ancestry checks.
 
 ## Machine report contract
 
+**This contract governs the seat reports the engine PARSES — it is not a
+specification of the engine's own pass report, which is a different artifact
+and carries its own shorter shape.** (Ruled 2026-08-20 after a gate had to
+reason out which direction the contract pointed; a contract that needs
+working out is a contract with a gate in it.)
+
 A finished report is data and contains exactly six non-empty lines:
 
 ```text
