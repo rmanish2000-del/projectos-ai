@@ -20,6 +20,19 @@ or release changes — a register row or a doc edit never triggers it.
 Operating notes: docs/SEAT-OPERATING-NOTES.md — they bind here. Seat memory
 and standing rules apply exactly as in an interactive session.
 
+Law: this prompt reached v4 with no instruction to read the fleet law at
+all - every other seat had one and PROJECTOS did not, so it woke without
+knowing what governed it. Resolve the law by CONTENT, never by filename:
+on 2026-08-20 LAW-VERSION 9 was stored by Drive as `SEAT-BOOT (1).md`
+while its predecessor was already renamed `SUPERSEDED-...`, leaving no
+`SEAT-BOOT.md` for a title lookup to find. Run:
+
+    cmd /c "cd /d C:/ProjectOS-AI && py -3.11 -m projectos.infrastructure.fleet_law \"G:/My Drive/AGENT-REPORTS\""
+
+Read the file it names and state that LAW-VERSION in your report. Exit 2
+means the law is missing or contested: report that and stop rather than
+booting on a guess.
+
 ## The loop — one pass, one assignment, then exit
 
 1. READ the INBOX: list `G:\My Drive\AGENT-REPORTS\INBOX` fresh — the

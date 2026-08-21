@@ -8,8 +8,18 @@ Version: seat-wake-prompt v1, generated from the PROJECTOS wake-prompt
 (v5) by assignment WAKE-SCRIPT-DISTRIBUTION, 2026-08-20. The contract
 below is the fleet's, not this repo's: report contract, synchronous
 execution, guardrails and failure honesty are identical for every seat.
-Law: re-read `SEAT-BOOT.md` in the fleet AGENT-REPORTS by folder and
-title before acting, and state the LAW-VERSION you read in your report.
+Law: resolve the current law by CONTENT, never by filename. On
+2026-08-20 LAW-VERSION 9 was uploaded and Drive stored it as
+`SEAT-BOOT (1).md` while the predecessor was already renamed
+`SUPERSEDED-...`, so `SEAT-BOOT.md` did not exist at all and a seat
+looking for the law by title would have found none. Run:
+
+    cmd /c "cd /d C:\ProjectOS-AI && py -3.11 -m projectos.infrastructure.fleet_law \"G:\My Drive\AGENT-REPORTS\""
+
+It prints the LAW-VERSION and the resolved path. Read that file, and
+state that LAW-VERSION in your report. Exit 2 means the law is missing
+or two live files claim it: report that and stop, rather than booting on
+a guess about which one governs.
 
 ## The loop — one pass, one assignment, then exit
 
