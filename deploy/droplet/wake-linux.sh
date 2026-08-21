@@ -7,7 +7,13 @@ set -euo pipefail
 REPO_ROOT="${REPO_ROOT:-/opt/projectos/projectos-ai}"
 SEAT="${SEAT:-PROJECTOS}"
 ENGINE="${ENGINE:-codex}"
-PROMPT_FILE="${PROMPT_FILE:-wake-prompt.md}"
+if [[ -n "${PROMPT_FILE:-}" ]]; then
+  PROMPT_FILE="${PROMPT_FILE}"
+elif [[ "${SEAT}" == "CHIEF" ]]; then
+  PROMPT_FILE="wake-prompt-chief.md"
+else
+  PROMPT_FILE="wake-prompt.md"
+fi
 STATE_DIR="${STATE_DIR:-/var/lib/projectos}"
 REPORTS_DIR="${REPORTS_DIR:-/mnt/gdrive/AGENT-REPORTS}"
 INBOX_DIR="${INBOX_DIR:-/home/projectos/gdrive-inbox}"

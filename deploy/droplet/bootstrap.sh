@@ -125,6 +125,9 @@ echo "==> install systemd units"
 for f in projectos-wake.service projectos-wake.timer projectos-signer.service projectos-signer.timer projectos-outreach-watch.service projectos-outreach-watch.timer projectos-reports-mount.service projectos-inbox-mount.service projectos-seat@.service projectos-seat@.timer; do
   install -m 0644 "${UNIT_SRC}/${f}" "/etc/systemd/system/${f}"
 done
+install -d -m 0755 /etc/systemd/system/projectos-seat@CHIEF.timer.d
+install -m 0644 "${UNIT_SRC}/projectos-seat@CHIEF.timer.d/interval.conf" \
+  /etc/systemd/system/projectos-seat@CHIEF.timer.d/interval.conf
 systemctl daemon-reload
 systemctl enable --now projectos-reports-mount.service projectos-inbox-mount.service
 # Timers not enabled here — founder enables after secrets are in place (see HANDOFF.md)
