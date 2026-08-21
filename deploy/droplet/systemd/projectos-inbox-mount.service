@@ -1,0 +1,15 @@
+[Unit]
+Description=Mount fleet INBOX from its separate Drive folder
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=projectos
+Group=projectos
+ExecStart=/usr/bin/rclone mount fleet:INBOX /home/projectos/gdrive-inbox --config /etc/projectos/rclone.conf --allow-non-empty --vfs-cache-mode writes
+ExecStop=/bin/fusermount3 -u /home/projectos/gdrive-inbox
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

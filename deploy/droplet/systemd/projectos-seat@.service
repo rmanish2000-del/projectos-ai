@@ -1,7 +1,7 @@
 [Unit]
-Description=ProjectOS seat wake (one loop pass)
+Description=ProjectOS %i seat wake (one loop pass)
 After=network-online.target projectos-reports-mount.service projectos-inbox-mount.service
-Wants=network-online.target projectos-reports-mount.service projectos-inbox-mount.service
+Wants=network-online.target
 
 [Service]
 Type=oneshot
@@ -10,12 +10,9 @@ Group=projectos
 WorkingDirectory=/opt/projectos/projectos-ai
 Environment=HOME=/home/projectos
 Environment=PATH=/opt/projectos/venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=SEAT=%i
 Environment=REPORTS_DIR=/mnt/gdrive/AGENT-REPORTS
 Environment=INBOX_DIR=/home/projectos/gdrive-inbox
-# Secrets sourced inside the wrapper from /etc/projectos/secrets — not here
 ExecStart=/opt/projectos/projectos-ai/deploy/droplet/wake-linux.sh
 TimeoutStartSec=1800
 Nice=10
-
-[Install]
-WantedBy=multi-user.target

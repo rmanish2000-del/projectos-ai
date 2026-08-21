@@ -1,0 +1,12 @@
+[Unit]
+Description=ProjectOS %i seat wake timer
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=20min
+AccuracySec=1min
+Persistent=true
+Unit=projectos-seat@%i.service
+
+[Install]
+WantedBy=timers.target
