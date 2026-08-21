@@ -1,0 +1,12 @@
+[Unit]
+Description=ProjectOS auto-signer timer
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+AccuracySec=1min
+Persistent=true
+Unit=projectos-signer.service
+
+[Install]
+WantedBy=timers.target

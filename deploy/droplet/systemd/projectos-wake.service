@@ -1,0 +1,19 @@
+[Unit]
+Description=ProjectOS seat wake (one loop pass)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=projectos
+Group=projectos
+WorkingDirectory=/opt/projectos/projectos-ai
+Environment=HOME=/home/projectos
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+# Secrets sourced inside the wrapper from /etc/projectos/secrets — not here
+ExecStart=/opt/projectos/projectos-ai/deploy/droplet/wake-linux.sh
+TimeoutStartSec=1800
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
