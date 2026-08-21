@@ -1,0 +1,54 @@
+{
+  "ignore_author": "rmanish2000-del",
+  "threads": [
+    {
+      "owner": "foundry-works",
+      "repo": "foundry-mcp",
+      "issue": 41,
+      "ignore_comment_ids_up_to": null
+    },
+    {
+      "owner": "Dicklesworthstone",
+      "repo": "ultimate_mcp_server",
+      "issue": 17,
+      "ignore_comment_ids_up_to": null
+    },
+    {
+      "owner": "vfarcic",
+      "repo": "dot-ai",
+      "issue": 180,
+      "ignore_comment_ids_up_to": 5371512463
+    },
+    {
+      "owner": "UKGovernmentBEIS",
+      "repo": "inspect_ai",
+      "issue": 4944,
+      "ignore_comment_ids_up_to": 5372110205
+    },
+    {
+      "owner": "Shadow-LLM",
+      "repo": "failure-cases",
+      "issue": 12,
+      "ignore_comment_ids_up_to": 5372172317
+    },
+    {
+      "owner": "mvanderlinde",
+      "repo": "yolt",
+      "issue": 1,
+      "ignore_comment_ids_up_to": null
+    },
+    {
+      "owner": "anomalyco",
+      "repo": "opencode",
+      "issue": 40805,
+      "ignore_comment_ids_up_to": 5372246983
+    }
+  ],
+  "unwatchable": [
+    {
+      "source": "Ken Huang Substack",
+      "thread": "coding-agent-security-lessons-from comment 319545153",
+      "reason": "No public comment API; Substack rate-limits hard (HTTP 429). Declared unwatchable rather than fragile."
+    }
+  ]
+}
