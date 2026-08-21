@@ -1,0 +1,18 @@
+[Unit]
+Description=ProjectOS auto-signer sweep (one pass)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=projectos
+Group=projectos
+WorkingDirectory=/opt/projectos/projectos-ai
+Environment=HOME=/home/projectos
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 -m projectos.infrastructure.inbox_auth auto_sign_once
+TimeoutStartSec=300
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
