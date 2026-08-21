@@ -318,3 +318,31 @@ def test_status_carries_a_liveness_signal() -> None:
     # The applier's own silence must be visible: if the timestamp stops
     # advancing, that is the alarm.
     assert "liveness" in status_markdown([], None, braked=False)
+
+
+def test_the_decision_half_contains_no_mutation_path() -> None:
+    # "Preserve running tasks and never disable automation" is guaranteed here
+    # structurally rather than by care: this module can only DECIDE. If someone
+    # later adds an apply/register/stop helper to it, the guarantee silently
+    # becomes a promise instead of a property - so the absence is asserted.
+    import projectos.infrastructure.fleet_applier as module
+
+    forbidden = {
+        name
+        for name in dir(module)
+        if any(
+            name.lower().startswith(verb)
+            for verb in ("apply", "register_", "unregister", "delete", "disable", "stop_")
+        )
+    }
+    assert not forbidden, f"decision module grew a mutation path: {sorted(forbidden)}"
+
+
+def test_the_module_never_imports_a_task_control_library() -> None:
+    # A module that cannot reach the scheduler cannot interrupt a running task.
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "src/projectos/infrastructure/fleet_applier.py"
+    ).read_text(encoding="utf-8")
+    for dangerous in ("subprocess", "win32com", "os.system", "ctypes"):
+        assert dangerous not in source, f"{dangerous} reachable from the decider"
