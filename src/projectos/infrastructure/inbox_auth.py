@@ -86,6 +86,21 @@ class KeyUnavailable(InvariantViolation):
     refusing to verify is not the same as a file passing verification."""
 
 
+class RegistryUnavailable(InvariantViolation):
+    """The canonical enforcement registry could not be found.
+
+    This FAILS CLOSED, unlike a missing row inside a registry that exists.
+    The distinction is the whole point: a registry that is present and simply
+    does not declare the parameter is a fleet that has not switched on yet,
+    which is safely tolerant. A registry that cannot be found at all means we
+    do not know what the fleet decided - and on 2026-08-20 that state was
+    reachable from any seat, because the path was resolved relative to the
+    caller's working directory. Four seats verifying from their own repo roots
+    would have found no registry, silently defaulted to tolerant, and acted on
+    unsigned assignments while the fleet believed itself enforcing.
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class AuthVerdict:
     """One file's authenticity decision, with the reason on the record."""
@@ -619,16 +634,61 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     verdict = verify_file(target, keyring)
-    mode = resolve_enforcement(Path(PARAMETER_REGISTRY_FILE))
+    try:
+        mode = resolve_enforcement_canonical()
+    except RegistryUnavailable as exc:
+        # Fail closed and say so. Silence here is what let four seats run
+        # tolerant while the fleet believed itself enforcing.
+        print(verdict.report_line())
+        print(f"REGISTRY UNAVAILABLE: {exc} -> REFUSE")
+        return 2
     act = should_act(verdict, mode)
     print(verdict.report_line())
     print(f"mode={mode} -> {'ACT' if act else 'REFUSE'}")
     return 0 if act else 2
 
 
-#: The registry the CLI consults for the transition switch, relative to the
-#: working directory (the seat's repo root).
+#: The registry the CLI consults for the transition switch. Kept as a
+#: repo-relative fragment only for joining onto the canonical root below -
+#: it is never opened relative to the caller's working directory.
 PARAMETER_REGISTRY_FILE = "docs/parameter_registry.json"
+
+#: Override for a legitimately relocated registry (packaged installs, a test
+#: fixture). It must still POINT AT A FILE THAT EXISTS: an override naming a
+#: missing file fails closed exactly like a missing canonical one, so this can
+#: never become the quiet route back to tolerant.
+PARAMETER_REGISTRY_ENV = "PROJECTOS_PARAMETER_REGISTRY"
+
+
+def canonical_registry_path() -> Path:
+    """Where the enforcement registry lives, regardless of the caller's cwd.
+
+    Derived from THIS MODULE's location, not from the process working
+    directory, so a seat verifying from its own repo root reads the same
+    registry as a seat verifying from ProjectOS. That is the entire fix: the
+    answer to "is the fleet enforcing" must not depend on which folder the
+    question was asked from.
+    """
+    override = os.environ.get(PARAMETER_REGISTRY_ENV)
+    if override:
+        return Path(override)
+    # inbox_auth.py -> infrastructure -> projectos -> src -> <repo root>
+    return Path(__file__).resolve().parents[3] / PARAMETER_REGISTRY_FILE
+
+
+def resolve_enforcement_canonical() -> str:
+    """The enforcement mode, resolved canonically and failing closed.
+
+    Raises RegistryUnavailable when the registry cannot be found at all.
+    Callers must treat that as REFUSE, never as tolerant.
+    """
+    path = canonical_registry_path()
+    if not path.exists():
+        raise RegistryUnavailable(
+            f"enforcement registry not found at {path} - refusing to guess "
+            "whether the fleet is enforcing"
+        )
+    return resolve_enforcement(path)
 
 if __name__ == "__main__":  # pragma: no cover - exercised via tests calling main()
     raise SystemExit(main())

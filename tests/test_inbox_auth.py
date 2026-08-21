@@ -16,6 +16,7 @@ from projectos.infrastructure.inbox_auth import (
     ENFORCEMENT_PARAM,
     MODE_ENFORCING,
     MODE_TOLERANT,
+    PARAMETER_REGISTRY_ENV,
     AutoSignResult,
     KeyUnavailable,
     load_keyring,
@@ -487,7 +488,7 @@ class TestCli:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         monkeypatch.setenv("PROJECTOS_INBOX_KEY", "k1:cli-drill-key")
-        monkeypatch.chdir(REPO_ROOT)  # so verify finds the shipped registry
+        monkeypatch.chdir(REPO_ROOT)  # incidental; the registry is found canonically
         target = tmp_path / "2026-08-17_2150_PROJECTOS_EXAMPLE.md"
         target.write_text(ASSIGNMENT, encoding="utf-8")
         assert main(["sign", str(target)]) == 0
@@ -502,13 +503,16 @@ class TestCli:
     ) -> None:
         # A synthetic tolerant registry, not the live one: the shipped value is
         # the founder's to flip, and this test is about the MODE's behaviour.
+        # Pointed at by the override rather than by chdir - since 2026-08-21
+        # the registry is resolved canonically, so which directory the process
+        # happens to be in no longer decides whether the fleet is enforcing.
         monkeypatch.setenv("PROJECTOS_INBOX_KEY", "k1:cli-drill-key")
-        (tmp_path / "docs").mkdir()
-        (tmp_path / "docs" / "parameter_registry.json").write_text(
+        registry = tmp_path / "parameter_registry.json"
+        registry.write_text(
             json.dumps({"parameters": {ENFORCEMENT_PARAM: {"value": "tolerant"}}}),
             encoding="utf-8",
         )
-        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv(PARAMETER_REGISTRY_ENV, str(registry))
         target = tmp_path / "unsigned.md"
         target.write_text(ASSIGNMENT, encoding="utf-8")
         assert main(["verify", str(target)]) == 0
