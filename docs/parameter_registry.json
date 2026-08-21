@@ -1,5 +1,5 @@
 {
-  "_about": "Founder-declared parameter values. A value here is a POLICY, chosen for a stated reason; it is not a default, not a tuning knob, and not fitted to data. Code resolves values from this file and FAILS CLOSED when one is absent \u2014 an invented parameter is an ungoverned one. Declaring or changing a value is ESCALATE-ALWAYS (projectos.domain.tiers): a founder act, recorded here with its reason in the founder's own words.",
+  "_about": "Founder-declared parameter values. A value here is a POLICY, chosen for a stated reason; it is not a default, not a tuning knob, and not fitted to data. Code resolves values from this file and FAILS CLOSED when one is absent — an invented parameter is an ungoverned one. Declaring or changing a value is ESCALATE-ALWAYS (projectos.domain.tiers): a founder act, recorded here with its reason in the founder's own words.",
   "_on_evidence": "Some rows carry `evidence_consulted`. That is measurement which INFORMED the discussion, never the basis for the number. A value fitted to an observed distribution is a fitted parameter wearing a policy label, and this register exists to stop exactly that. Where a row has both, `basis` states which argument actually chose the value.",
   "parameters": {
     "INBOX-AUTH-ENFORCEMENT": {
@@ -10,9 +10,9 @@
       "recorded_by": "PROJECTOS seat, assignment INBOX-KEY-GENERATION",
       "reason": "Build the switch; leave it tolerant. Refusing everything unsigned before every issuer signs would refuse every legitimate assignment in the fleet.",
       "semantics": {
-        "tolerant": "An UNSIGNED file may be acted on; the absence is still reported. A file whose stamp is PRESENT BUT WRONG is refused even here \u2014 a failed verification is evidence of tampering or a wrong key, and no transition excuses that.",
+        "tolerant": "An UNSIGNED file may be acted on; the absence is still reported. A file whose stamp is PRESENT BUT WRONG is refused even here — a failed verification is evidence of tampering or a wrong key, and no transition excuses that.",
         "enforcing": "Anything that does not verify is refused and reported.",
-        "flipped_by": "The founder only, by changing this row's value to 'enforcing' \u2014 a written act in this register. No seat flips it for itself and no code path writes this file.",
+        "flipped_by": "The founder only, by changing this row's value to 'enforcing' — a written act in this register. No seat flips it for itself and no code path writes this file.",
         "when": "After the key is distributed to every seat and Chat signs every assignment it issues. Must be 'enforcing' before the wake scheduler is armed (DC-7's closing condition)."
       }
     },
@@ -37,7 +37,7 @@
       },
       "scope": {
         "applies_to": "Locally-written files, where the local mtime IS the authoring moment (measured ~1s skew).",
-        "checked_by": "PROJECTOS \u2014 projectos.infrastructure.fleet_clock.check_local_file",
+        "checked_by": "PROJECTOS — projectos.infrastructure.fleet_clock.check_local_file",
         "synced_files": {
           "owner": "Chat",
           "status": "CHAT-OWNED, live",
@@ -45,6 +45,19 @@
           "ruled_on": "2026-08-14, assignment SKEW-TOLERANCE-AND-ANCHOR"
         }
       }
+    },
+    "INBOX-LEASE-ENFORCEMENT": {
+      "value": "tolerant",
+      "status": "proposed",
+      "declared_by": "PROJECTOS seat (proposed, not ratified)",
+      "declared_on": "2026-08-21",
+      "recorded_by": "PROJECTOS seat, assignment INBOX-WRITER-LEASE-AND-SIGNER-LIVENESS",
+      "reason": "Ships TOLERANT deliberately. The lease fence is correct but nothing feeds it yet - no orchestrator stamps a LEASE line on the assignments it emits. Enforcing before the issuers stamp would refuse every legitimate assignment and stop the fleet taking work, which is automation disablement wearing a security badge. Flip to enforcing only after the issuing surfaces emit LEASE lines.",
+      "semantics": {
+        "tolerant": "A file with no writer-lease evidence may still be auto-signed. The guard refusals (law-binding, founder-only acts) apply in EVERY mode - they are a safety property, not a transition.",
+        "enforcing": "The auto-signer refuses to vouch for any file that does not carry evidence it was emitted under the active INBOX writer lease. A second concurrent issuer's file is refused and recorded as an incident."
+      },
+      "flip_condition": "Every surface that writes into the INBOX acquires the lease and stamps its output (projectos.infrastructure.inbox_lease.stamp_lease)."
     }
   }
 }

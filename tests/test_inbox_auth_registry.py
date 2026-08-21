@@ -107,3 +107,36 @@ def test_a_present_registry_without_the_row_stays_tolerant(
     path.write_text(json.dumps({"parameters": {}}), encoding="utf-8")
     monkeypatch.setenv(PARAMETER_REGISTRY_ENV, str(path))
     assert resolve_enforcement_canonical() == MODE_TOLERANT
+
+
+def test_the_lease_switch_ships_tolerant_so_the_fleet_keeps_taking_work() -> None:
+    # A fence nothing feeds yet must not be armed. No orchestrator stamps a
+    # LEASE line today, so enforcing would refuse every legitimate assignment
+    # - automation disablement wearing a security badge.
+    from projectos.infrastructure.inbox_auth import resolve_lease_enforcement
+
+    assert resolve_lease_enforcement() == MODE_TOLERANT
+
+
+def test_the_lease_switch_also_fails_closed_without_a_registry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from projectos.infrastructure.inbox_auth import resolve_lease_enforcement
+
+    monkeypatch.setenv(PARAMETER_REGISTRY_ENV, str(tmp_path / "absent.json"))
+    with pytest.raises(RegistryUnavailable):
+        resolve_lease_enforcement()
+
+
+def test_the_lease_switch_reads_enforcing_when_declared(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from projectos.infrastructure.inbox_auth import resolve_lease_enforcement
+
+    path = tmp_path / "parameter_registry.json"
+    path.write_text(
+        json.dumps({"parameters": {"INBOX-LEASE-ENFORCEMENT": {"value": "enforcing"}}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(PARAMETER_REGISTRY_ENV, str(path))
+    assert resolve_lease_enforcement() == MODE_ENFORCING

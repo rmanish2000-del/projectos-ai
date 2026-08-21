@@ -389,6 +389,11 @@ class TestAutoSign:
         kwargs.setdefault("brake_path", tmp_path / "no-brake")
         kwargs.setdefault("log_path", tmp_path / "auto-sign.log")
         kwargs.setdefault("stamp", "2026-08-19 09:00")
+        # These existing cases predate the writer lease and are about the
+        # signer's own bounds, so they sweep with the lease fence off. The
+        # lease is exercised on its own terms in test_inbox_lease.py and
+        # end-to-end in test_signer_lease_integration.py.
+        kwargs.setdefault("require_lease", False)
         return auto_sign_once(inbox, KEY, **kwargs)
 
     def test_unsigned_assignments_are_signed(self, tmp_path: Path) -> None:
@@ -466,7 +471,11 @@ class TestAutoSign:
         audit = (drive / "AUTO-SIGN-LOG.md").read_text(encoding="utf-8")
         assert "auto-signed: 2026-08-19_0900_PROJECTOS_ONE.md" in audit
         status = (drive / "AUTO-SIGN-STATUS.md").read_text(encoding="utf-8")
-        assert "last swept 2026-08-19 09:00" in status
+        # The status gained fields in 2026-08-21 (last signed, last attempted,
+        # refusal class, unresolved count); the liveness stamp is still the
+        # thing this test is about.
+        assert "last swept:" in status
+        assert "2026-08-19 09:00" in status
         assert "Kill switch" in status
 
     def test_quiet_sweep_still_refreshes_liveness(self, tmp_path: Path) -> None:
@@ -477,9 +486,9 @@ class TestAutoSign:
         drive = tmp_path / "drive"
         drive.mkdir()
         self._sweep(inbox, tmp_path, drive_dir=drive, stamp="2026-08-19 09:30")
-        assert "last swept 2026-08-19 09:30" in (drive / "AUTO-SIGN-STATUS.md").read_text(
-            encoding="utf-8"
-        )
+        status = (drive / "AUTO-SIGN-STATUS.md").read_text(encoding="utf-8")
+        assert "last swept:" in status
+        assert "2026-08-19 09:30" in status
         assert not (drive / "AUTO-SIGN-LOG.md").exists()  # no noise when nothing happened
 
 
