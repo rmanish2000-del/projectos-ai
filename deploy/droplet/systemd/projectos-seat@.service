@@ -13,6 +13,8 @@ Environment=PATH=/opt/projectos/venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=SEAT=%i
 Environment=REPORTS_DIR=/mnt/gdrive/AGENT-REPORTS
 Environment=INBOX_DIR=/home/projectos/gdrive-inbox
+# Optional host default ENGINE=grok|codex|claude (file may be absent)
+EnvironmentFile=-/etc/projectos/engine.env
 ExecStart=/opt/projectos/projectos-ai/deploy/droplet/wake-linux.sh
 TimeoutStartSec=1800
 Nice=10
