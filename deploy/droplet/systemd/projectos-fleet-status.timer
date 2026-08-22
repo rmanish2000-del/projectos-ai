@@ -1,0 +1,11 @@
+[Unit]
+Description=ProjectOS daily founder status timer
+
+[Timer]
+OnCalendar=*-*-* 08:00:00
+Persistent=true
+AccuracySec=5min
+Unit=projectos-fleet-status.service
+
+[Install]
+WantedBy=timers.target
