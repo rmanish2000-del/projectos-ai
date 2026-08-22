@@ -12,6 +12,7 @@ Environment=HOME=/home/projectos
 Environment=PATH=/opt/projectos/venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=REPORTS_DIR=/mnt/gdrive/AGENT-REPORTS
 Environment=INBOX_DIR=/home/projectos/gdrive-inbox
+EnvironmentFile=-/etc/projectos/engine.env
 # Secrets sourced inside the wrapper from /etc/projectos/secrets — not here
 ExecStart=/opt/projectos/projectos-ai/deploy/droplet/wake-linux.sh
 TimeoutStartSec=1800
