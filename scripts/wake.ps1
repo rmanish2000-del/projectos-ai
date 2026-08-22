@@ -217,8 +217,11 @@ if (Test-Path $StderrFile) { Remove-Item $StderrFile -Force -ErrorAction Silentl
 if ($Engine -eq "codex") {
     Get-Content $prompt -Raw | & codex exec - -s workspace-write --add-dir $ReportsDir --skip-git-repo-check --color never 2>$StderrFile
 } elseif ($Engine -eq "grok") {
+    # Windows: do not pass --cwd as a separate argv (grok 1.0.5 treats path as unexpected).
+    # Already Set-Location $RepoRoot above. Pass -p via argument array for safe quoting.
     $promptText = Get-Content $prompt -Raw
-    & grok --no-auto-update --always-approve --cwd $RepoRoot -p $promptText 2>$StderrFile
+    $grokArgs = @('--no-auto-update', '--always-approve', '-p', $promptText)
+    & grok @grokArgs 2>$StderrFile
 } else {
     Get-Content $prompt -Raw | & claude -p 2>$StderrFile
 }
