@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Linux seat wake — one loop pass. Mirrors the contract of scripts/wake.ps1:
-# engine default codex; every real failure leaves a note (Drive if mounted,
-# else local under /var/lib/projectos/failures so the node is never silent).
+# engines: grok | codex | claude (default codex). Every real failure leaves a
+# note (Drive if mounted, else local under /var/lib/projectos/failures).
 set -euo pipefail
 
 REPO_ROOT="${REPO_ROOT:-/opt/projectos/projectos-ai}"
@@ -42,10 +42,12 @@ write_failure() {
 }
 
 # Source engine auth if present (never log contents)
-if [[ -f "${SECRETS_DIR}/codex.env" ]]; then
-  # shellcheck disable=SC1090
-  set -a; source "${SECRETS_DIR}/codex.env"; set +a
-fi
+for envf in codex.env grok.env claude.env; do
+  if [[ -f "${SECRETS_DIR}/${envf}" ]]; then
+    # shellcheck disable=SC1090
+    set -a; source "${SECRETS_DIR}/${envf}"; set +a
+  fi
+done
 
 if [[ -f "${LOCK}" ]]; then
   oldpid=$(awk -F= '/^pid=/{print $2}' "${LOCK}" || true)
@@ -64,6 +66,14 @@ if [[ ! -f "${prompt}" ]]; then
   exit 2
 fi
 
+case "${ENGINE}" in
+  grok|codex|claude) ;;
+  *)
+    write_failure "unsupported ENGINE=${ENGINE} (allowed: grok|codex|claude)"
+    exit 2
+    ;;
+esac
+
 if ! command -v "${ENGINE}" >/dev/null 2>&1; then
   write_failure "${ENGINE} CLI not on PATH"
   exit 2
@@ -71,14 +81,23 @@ fi
 
 : > "${STDERR_FILE}"
 set +e
-if [[ "${ENGINE}" == "codex" ]]; then
-  # workspace-write invokes bwrap networking and fails on this droplet with
-  # RTM_NEWADDR. This wrapper is already isolated to the dedicated fleet host.
-  cat "${prompt}" | codex exec - --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --color never \
-    2>"${STDERR_FILE}"
-else
-  cat "${prompt}" | claude -p 2>"${STDERR_FILE}"
-fi
+case "${ENGINE}" in
+  codex)
+    # workspace-write invokes bwrap networking and fails on this droplet with
+    # RTM_NEWADDR. This wrapper is already isolated to the dedicated fleet host.
+    cat "${prompt}" | codex exec - --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --color never \
+      2>"${STDERR_FILE}"
+    ;;
+  grok)
+    # Official xAI Grok Build CLI headless mode (docs: grok -p / --always-approve).
+    # Auth: XAI_API_KEY via /etc/projectos/secrets/grok.env — never argv.
+    grok --no-auto-update --always-approve --cwd "${REPO_ROOT}" \
+      -p "$(cat "${prompt}")" 2>"${STDERR_FILE}"
+    ;;
+  claude)
+    cat "${prompt}" | claude -p 2>"${STDERR_FILE}"
+    ;;
+esac
 rc=$?
 set -e
 
