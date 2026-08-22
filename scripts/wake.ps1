@@ -8,15 +8,14 @@
 # leaves a WAKE-FAILURE file on Drive so silence is impossible. A SKIP is
 # not a failure and deliberately leaves nothing on Drive.
 #
-# WAKE-LOOP-STOP-THE-BLEED (2026-08-21): stderr tail on engine failures;
-# per-seat exponential backoff after consecutive identical failures; default
-# engine is codex (GROK/CODEX preferred, Claude fallback) per founder decision.
+# Engines: grok | codex | claude (default codex). Grok uses official xAI CLI
+# headless: grok -p "..." with XAI_API_KEY in environment (never argv).
 param(
     [string]$RepoRoot = "C:\ProjectOS-AI",
     [string]$Seat = "PROJECTOS",
     [string]$ReportsDir = "G:\My Drive\AGENT-REPORTS",
     [string]$PromptFile = "wake-prompt.md",
-    [ValidateSet("claude", "codex")]
+    [ValidateSet("grok", "claude", "codex")]
     [string]$Engine = "codex"
 )
 
@@ -202,7 +201,7 @@ if (-not (Test-Path $prompt)) {
     Record-FailureClass "missing-prompt"
     Exit-Wake 2
 }
-$cliName = if ($Engine -eq "codex") { "codex" } else { "claude" }
+$cliName = $Engine
 $cli = Get-Command $cliName -ErrorAction SilentlyContinue
 if ($null -eq $cli) {
     Write-WakeFailure "$cliName CLI not on PATH (Engine=$Engine)"
@@ -217,10 +216,13 @@ $reportsBefore = @(Get-ChildItem $ReportsDir -File -ErrorAction SilentlyContinue
 if (Test-Path $StderrFile) { Remove-Item $StderrFile -Force -ErrorAction SilentlyContinue }
 if ($Engine -eq "codex") {
     Get-Content $prompt -Raw | & codex exec - -s workspace-write --add-dir $ReportsDir --skip-git-repo-check --color never 2>$StderrFile
+} elseif ($Engine -eq "grok") {
+    $promptText = Get-Content $prompt -Raw
+    & grok --no-auto-update --always-approve --cwd $RepoRoot -p $promptText 2>$StderrFile
 } else {
     Get-Content $prompt -Raw | & claude -p 2>$StderrFile
 }
-$claudeExit = $LASTEXITCODE
+$engineExit = $LASTEXITCODE
 
 Write-UsageLine
 
@@ -259,14 +261,14 @@ if ($orphans.Count -gt 0) {
     Record-FailureClass "orphan-process"
     Exit-Wake 1
 }
-if ($claudeExit -ne 0) {
+if ($engineExit -ne 0) {
     $tail = ""
     if (Test-Path $StderrFile) {
         $tail = (Get-Content $StderrFile -Tail 40 -ErrorAction SilentlyContinue | Out-String)
     }
     if ([string]::IsNullOrWhiteSpace($tail)) { $tail = "(no stderr captured)" }
-    Write-WakeFailure "engine exited $claudeExit`nstderr tail:`n$tail"
-    Record-FailureClass "engine-exit-$claudeExit"
+    Write-WakeFailure "engine exited $engineExit`nstderr tail:`n$tail"
+    Record-FailureClass "engine-exit-$engineExit"
     Exit-Wake 1
 }
 
