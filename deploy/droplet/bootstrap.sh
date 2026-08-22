@@ -1,7 +1,16 @@
 #!/usr/bin/env bash
 # Idempotent bootstrap: bare Ubuntu 24.04 -> ProjectOS fleet node.
 # Safe to run twice. Requires founder-placed secret files; never creates secret values.
-set -euo pipefail
+set -Eeuo pipefail
+
+# A step that fails must not report success: on 2026-08-21 a `|| true` on the
+# pip step let BOOTSTRAP OK print over a failed install, and the false OK cost
+# an hour of hunting a symptom. Any failing command aborts the script here,
+# names itself, and exits with its own status - so the final OK line is
+# reachable only when every step before it succeeded. Do not add `|| true` to
+# a step; if a failure is genuinely tolerable, handle it in an explicit
+# if/else that says what is being tolerated and why.
+trap 'status=$?; echo "BOOTSTRAP FAILED (exit ${status}) at line ${LINENO}: ${BASH_COMMAND}" >&2; exit "${status}"' ERR
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "Run as root" >&2
