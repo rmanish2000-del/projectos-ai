@@ -41,10 +41,35 @@ LAW_VERSION_RE = re.compile(r"LAW-VERSION[:\s]+\**\s*(\d+)", re.IGNORECASE)
 #: How the law identifies ITSELF. Declaring a LAW-VERSION is not enough to be
 #: the law: the founder dashboard reports the current version too, and an
 #: early draft of this resolver duly offered the dashboard and the law as
-#: rival candidates and refused to choose. A law file carries this name in its
-#: filename or in its opening heading - which survives Drive's duplicate
-#: suffix, since that only appends to the stem.
-LAW_NAME = "SEAT-BOOT"
+#: rival candidates and refused to choose. And since 2026-08-21 every seat
+#: report opens by CITING the law it booted under ("SEAT-BOOT ... LAW-VERSION
+#: 9"), so a substring match anywhere in the head - or anywhere in the
+#: filename, which reports like `..._ITEM4-SEAT-BOOT-STRANGER-READ.md` also
+#: defeat - counts citations as declarations and halts the fleet on a false
+#: tie (assignment FIX-LAW-RESOLVER-CITATION, 2026-08-22).
+#:
+#: Only a DECLARATION counts, in one of two forms a citation cannot
+#: accidentally take:
+#:   - the filename IS the law's name: stem exactly `SEAT-BOOT`, allowing only
+#:     Drive's duplicate suffix `SEAT-BOOT (1)` - the 2026-08-20 incident this
+#:     module exists for. A stem that merely CONTAINS the name is a mention.
+#:   - the file TITLES itself the law: its first non-empty line is a markdown
+#:     heading whose text starts with `SEAT-BOOT` as a whole word. A report
+#:     cites the law mid-prose, not as its own opening title.
+LAW_FILENAME_RE = re.compile(r"SEAT-BOOT(?: \(\d+\))?\Z", re.IGNORECASE)
+LAW_TITLE_RE = re.compile(r"#{1,6}\s+SEAT-BOOT(?![\w-])", re.IGNORECASE)
+
+
+def _identifies_as_law(path: Path, head: str) -> bool:
+    """True only for a file that DECLARES itself the law (see above)."""
+    if LAW_FILENAME_RE.fullmatch(path.stem):
+        return True
+    for line in head.lstrip("\ufeff").splitlines():
+        stripped = line.strip()
+        if stripped:
+            return LAW_TITLE_RE.match(stripped) is not None
+    return False
+
 
 #: Only the head of a file is scanned. The version belongs at the top; a
 #: mention of "LAW-VERSION 7" three hundred lines into a changelog is a
@@ -82,8 +107,7 @@ def _declared_version(path: Path) -> int | None:
     except OSError:
         return None
 
-    identifies_as_law = LAW_NAME in path.name.upper() or LAW_NAME in head[:200].upper()
-    if not identifies_as_law:
+    if not _identifies_as_law(path, head):
         return None
 
     match = LAW_VERSION_RE.search(head)
