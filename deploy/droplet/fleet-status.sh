@@ -11,7 +11,6 @@ OUT="${REPORTS_DIR}/FOUNDER-STATUS-${DAY}.md"
 
 engine="codex"
 if [[ -f "${ENGINE_ENV}" ]]; then
-  # shellcheck disable=SC1090
   engine="$(grep -E '^[[:space:]]*ENGINE=' "${ENGINE_ENV}" | tail -1 | cut -d= -f2- | tr -d '[:space:]' || true)"
   engine="${engine:-codex}"
 fi
@@ -30,11 +29,9 @@ timer_block=""
 any_bad=0
 for s in "${seats[@]}"; do
   u="projectos-seat@${s}.timer"
-  if systemctl list-unit-files "${u}" 2>/dev/null | grep -q "${u}"; then
+  if systemctl cat "$u" &>/dev/null; then
     st=$(timer_line "$u")
-    timer_block+="- ${u}: ${st}"$
-'
-'
+    timer_block+="- ${u}: ${st}\n"
     [[ "$st" == "active" ]] || any_bad=1
   fi
 done
@@ -50,40 +47,30 @@ fi
 
 failures="none"
 if [[ -d "${REPORTS_DIR}" ]]; then
-  f=$(find "${REPORTS_DIR}" -maxdepth 1 -name '*WAKE-FAILURE*' -mtime -1 2>/dev/null | sort | tail -n 5 || true)
-  if [[ -n "$f" ]]; then
-    failures="$f"
+  mapfile -t fail_list < <(find "${REPORTS_DIR}" -maxdepth 1 -name '*WAKE-FAILURE*' -mtime -1 2>/dev/null | sort | tail -n 5 || true)
+  if [[ ${#fail_list[@]} -gt 0 && -n "${fail_list[0]:-}" ]]; then
+    failures=$(printf '%s\n' "${fail_list[@]}")
     any_bad=1
   fi
 fi
 
 inbox_open=0
 inbox_names=""
-if [[ -d "${INBOX_DIR}" ]]; then
+scan_inbox() {
+  local dir="$1"
+  [[ -d "$dir" ]] || return 0
+  local p base
   while IFS= read -r -d '' p; do
     base=$(basename "$p")
     case "$base" in
       DONE-*|PROPOSAL_*) continue ;;
     esac
     inbox_open=$((inbox_open + 1))
-    inbox_names+="- ${base}"$
-'
-'
-  done < <(find "${INBOX_DIR}" -maxdepth 1 -type f -print0 2>/dev/null || true)
-fi
-
-if [[ -d "${REPORTS_DIR}/INBOX" ]]; then
-  while IFS= read -r -d '' p; do
-    base=$(basename "$p")
-    case "$base" in
-      DONE-*|PROPOSAL_*) continue ;;
-    esac
-    inbox_open=$((inbox_open + 1))
-    inbox_names+="- ${base}"$
-'
-'
-  done < <(find "${REPORTS_DIR}/INBOX" -maxdepth 1 -type f -print0 2>/dev/null || true)
-fi
+    inbox_names+="- ${base}\n"
+  done < <(find "$dir" -maxdepth 1 -type f -print0 2>/dev/null || true)
+}
+scan_inbox "${INBOX_DIR}"
+scan_inbox "${REPORTS_DIR}/INBOX"
 
 if [[ "$any_bad" -eq 0 ]]; then
   fleet="RUNNING"
@@ -107,16 +94,14 @@ fi
   echo "2. Engine default: ${engine}"
   echo "3. Signer timer: ${signer}"
   echo "4. Seat timers:"
-  printf '%s' "${timer_block:-none registered}"$'
-'
+  echo -e "${timer_block:-none registered}"
   echo "5. Usage today (last lines):"
   echo "${usage_today}"
   echo
   echo "6. Open INBOX files (non-DONE): ${inbox_open}"
   if [[ -n "${inbox_names}" ]]; then
-    printf '%s' "${inbox_names}"
+    echo -e "${inbox_names}"
   fi
-  echo
   echo "7. Failures (last 24h):"
   echo "${failures}"
   echo
