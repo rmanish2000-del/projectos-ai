@@ -244,7 +244,7 @@ if (Test-Path $TranscriptFile) { Remove-Item $TranscriptFile -Force -ErrorAction
 $enginePreference = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 if ($Engine -eq "codex") {
-    Get-Content $prompt -Raw | & codex exec - -s workspace-write --add-dir $ReportsDir --skip-git-repo-check --color never 1>$TranscriptFile 2>$StderrFile
+    Get-Content $prompt -Raw | & codex exec - --dangerously-bypass-approvals-and-sandbox --add-dir $ReportsDir --skip-git-repo-check --color never 1>$TranscriptFile 2>$StderrFile
 } elseif ($Engine -eq "grok") {
     # Windows: do not pass --cwd as a separate argv (grok 1.0.5 treats path as unexpected).
     # Already Set-Location $RepoRoot above. Pass -p via argument array for safe quoting.
@@ -313,6 +313,7 @@ function Get-DescendantIds {
 }
 
 $descendants = Get-DescendantIds -RootId $PID
+if(-not $descendants){$descendants=@(-1)}
 $orphans = @(Get-Process -Id $descendants -ErrorAction SilentlyContinue |
     Where-Object { $_.ProcessName -match '^(python|py|pytest|node)' -and $_.StartTime -gt $wakeStart })
 if ($orphans.Count -gt 0) {
@@ -391,3 +392,4 @@ if ($newClaims.Count -eq 0 -and $newOutcomes.Count -eq 0) {
 Write-LocalLog "OK: wake completed (engine=$Engine)"
 Record-Success
 Exit-Wake 0
+
