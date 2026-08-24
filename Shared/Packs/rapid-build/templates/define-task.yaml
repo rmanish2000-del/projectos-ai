@@ -1,0 +1,15 @@
+# rapid-build assignment template — kernel issues id, state, origin.
+title: Define the task
+work_type: specification
+executor: cowork
+objective: >
+  State the task, its scope, and its machine-verifiable acceptance criteria.
+stopping_point: Stop when the task definition is committed. Do not build yet.
+acceptance_criteria:
+  - id: AC-1
+    statement: A task definition exists at docs/TASK.md.
+    verify:
+      type: file_exists
+      path: docs/TASK.md
+evidence_required:
+  - commit

@@ -1,0 +1,15 @@
+[Unit]
+Description=ProjectOS public outreach reply watcher
+After=network-online.target projectos-reports-mount.service
+Wants=network-online.target projectos-reports-mount.service
+
+[Service]
+Type=oneshot
+User=projectos
+Group=projectos
+WorkingDirectory=/opt/projectos/projectos-ai
+# systemd namespace hardening (ProtectSystem/ProtectHome/ReadWritePaths) is
+# intentionally omitted: it prevents access to the rclone FUSE mount (226/NAMESPACE).
+ExecStart=/opt/projectos/venv/bin/python /opt/projectos/projectos-ai/scripts/outreach_watch.py
+NoNewPrivileges=true
+PrivateTmp=true

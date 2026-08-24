@@ -1,0 +1,11 @@
+# ProjectOS workspace project manifest — schema v1.
+schema_version: 1
+project:
+  id: tradeos-ai
+  name: TradeOS-AI
+  description: SENSEX intraday options platform; SensexPilot is a component of this repository.
+pack: rapid-build
+workflow_mode: governed
+repository:
+  path: C:/dev/TradeOS-AI
+  adapter: local_git

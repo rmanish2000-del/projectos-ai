@@ -1,0 +1,5 @@
+@echo off
+REM FOUNDER-RUN ONLY — registering this task is the enablement act
+REM (REMOVE-THE-GO doctrine). Emitted by the __NAME__ scaffold __DATE__;
+REM NOT registered by any seat. Adjust /st to the ratified cadence first.
+schtasks /create /tn "FLEET\WAKE-__NAME__" /tr "powershell -NoProfile -ExecutionPolicy Bypass -Command \"cd C:\__NAME__; claude -p (Get-Content wake-prompt.md -Raw) --dangerously-skip-permissions\"" /sc daily /st 11:00 /f

@@ -82,4 +82,6 @@ def available_schemas() -> tuple[str, ...]:
         "pack.schema.json",
         "escalation.schema.json",
         "audit_entry.schema.json",
+        "workspace_manifest.schema.json",
+        "project_manifest.schema.json",
     )

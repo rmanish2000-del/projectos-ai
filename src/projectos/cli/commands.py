@@ -8,7 +8,9 @@ kernel already decided.
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from projectos.application import validation_service
 from projectos.cli import formatting
@@ -21,6 +23,7 @@ from projectos.domain.enums import (
     RepositoryAdapterKind,
     Role,
     Status,
+    WorkflowMode,
 )
 from projectos.domain.errors import (
     ExitCode,
@@ -40,6 +43,9 @@ from projectos.infrastructure.scaffold import build_manifest, scaffold
 from projectos.infrastructure.system import StaticIdentityProvider
 from projectos.infrastructure.template_binding import YamlTemplateBinder
 from projectos.infrastructure.yaml_io import read_yaml
+
+if TYPE_CHECKING:
+    from projectos.infrastructure.workspace_plan import Plan
 
 
 def _kernel(args: argparse.Namespace) -> Kernel:
@@ -78,6 +84,653 @@ def cmd_init(args: argparse.Namespace) -> int:
     print()
     print(f"  Initialised {layout.root}")
     print("  Next: projectos status")
+    return int(ExitCode.OK)
+
+
+# -- workspace ----------------------------------------------------------------
+
+
+def cmd_workspace(args: argparse.Namespace) -> int:
+    """Workspace tooling. Dispatches on the workspace subcommand."""
+    if args.workspace_command == "init":
+        return _cmd_workspace_init(args)
+    if args.workspace_command == "add-project":
+        return _cmd_workspace_add_project(args)
+    if args.workspace_command == "init-project":
+        return _cmd_workspace_init_project(args)
+    if args.workspace_command == "list":
+        return _cmd_workspace_list(args)
+    if args.workspace_command == "discover":
+        return _cmd_workspace_discover(args)
+    if args.workspace_command == "handoff":
+        return _cmd_workspace_handoff(args)
+    if args.workspace_command == "status":
+        return _cmd_workspace_status(args)
+    if args.workspace_command == "doctor":
+        return _cmd_workspace_doctor(args)
+    if args.workspace_command == "queue":
+        return _cmd_workspace_queue(args)
+    if args.workspace_command == "next":
+        return _cmd_workspace_next(args)
+    if args.workspace_command == "plan":
+        return _cmd_workspace_plan(args)
+    if args.workspace_command == "run":
+        return _cmd_workspace_run(args)
+    if args.workspace_command == "dispatch":
+        return _cmd_workspace_dispatch(args)
+    if args.workspace_command == "recommend-agent":
+        return _cmd_workspace_recommend_agent(args)
+    if args.workspace_command == "dashboard":
+        return _cmd_workspace_dashboard(args)
+    if args.workspace_command == "focus":
+        return _cmd_workspace_focus(args)
+    if args.workspace_command == "inbox":
+        return _cmd_workspace_inbox(args)
+    if args.workspace_command == "assignment":
+        return _cmd_workspace_assignment(args)
+    raise ValidationError(f"Unknown workspace command {args.workspace_command!r}")
+
+
+def _cmd_workspace_init(args: argparse.Namespace) -> int:
+    """`workspace init <path>` — bootstrap a local-first workspace (P3).
+
+    Idempotent: creates whatever is missing and preserves existing files, so a
+    second run is a visible no-op rather than a corruption.
+    """
+    from projectos.infrastructure.workspace import bootstrap_workspace
+
+    root = Path(args.path).resolve()
+    result = bootstrap_workspace(root, name=args.name, force=args.force)
+
+    title = "WORKSPACE CREATED" if result.is_fresh else "WORKSPACE UPDATED (idempotent)"
+    print(formatting.heading(f"{title}  {result.root}"))
+    print(f"  created: {len(result.created)}    kept: {len(result.kept)}")
+    if result.created:
+        print()
+        print("  new:")
+        for path in result.created:
+            print(f"    + {path}")
+    if result.kept and not result.is_fresh:
+        print()
+        print(
+            f"  preserved {len(result.kept)} existing item(s) — "
+            "re-run with --force to overwrite."
+        )
+    print()
+    print(f"  Workspace manifest: {result.root / 'Workspace.yaml'}")
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_add_project(args: argparse.Namespace) -> int:
+    """`workspace add-project <name>` — register a project (P4.2). Idempotent."""
+    from projectos.infrastructure.workspace_bridge import add_project
+
+    project_dir = add_project(
+        Path(args.workspace),
+        name=args.name,
+        pack=args.pack,
+        project_id=args.project_id,
+        description=args.description,
+        repository_path=args.repo,
+        repository_remote=args.repo_remote,
+        repository_branch=args.repo_branch,
+        workflow_mode=WorkflowMode(args.workflow),
+        force=args.force,
+    )
+    print(formatting.heading(f"PROJECT REGISTERED  {args.name}"))
+    print(f"  pack        {args.pack}    workflow: {args.workflow}")
+    if args.repo:
+        print(f"  repository  {Path(args.repo).resolve()}")
+    if args.repo_remote:
+        print(f"  remote      {args.repo_remote}")
+    print(f"  manifest    {project_dir / 'project.yaml'}")
+    print()
+    print(f"  Next: projectos workspace init-project {args.name} "
+          "--founder-id <id> --founder-name <name>")
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_init_project(args: argparse.Namespace) -> int:
+    """`workspace init-project <name>` — scaffold the project's kernel (P4.2)."""
+    from projectos.infrastructure.workspace_bridge import init_project_kernel
+
+    repo = init_project_kernel(
+        Path(args.workspace),
+        name=args.name,
+        founder_id=args.founder_id,
+        founder_name=args.founder_name,
+        force=args.force,
+    )
+    print(formatting.heading(f"PROJECT KERNEL READY  {args.name}"))
+    print(f"  repository  {repo}")
+    print(f"  state       {repo / '.projectos'}")
+    print()
+    print(f"  Next: projectos --repo {repo} next")
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_list(args: argparse.Namespace) -> int:
+    """`workspace list` — registered projects and their status (P4.2). Read-only."""
+    from projectos.infrastructure.workspace_bridge import list_projects
+
+    statuses = list_projects(Path(args.workspace))
+    print(formatting.heading(f"WORKSPACE PROJECTS  ({len(statuses)})"))
+    if not statuses:
+        print("  none registered — `projectos workspace add-project <name>`")
+        return int(ExitCode.OK)
+    for status in statuses:
+        active = status.active_assignment or "—"
+        state = "initialised" if status.initialised else "not initialised"
+        print(f"  {status.name}  ({status.project_id})")
+        print(f"    pack        {status.pack or '—'}    workflow: {status.workflow_mode}")
+        print(f"    repository  {status.repository}    branch: {status.active_branch or '—'}")
+        print(f"    state       {status.state_location or '—'}")
+        print(f"    kernel      {state}    active assignment: {active}")
+    return int(ExitCode.OK)
+
+
+def _open_workspace_project(args: argparse.Namespace) -> tuple[str, str, Kernel]:
+    """Resolve exactly one registered project and open its kernel through the bridge.
+
+    Shared by the workspace commands that operate on a single project's kernel
+    (`next`, `assignment`). Returns ``(workspace_name, project_id, kernel)``. Fails
+    closed on a missing/malformed workspace (via `resolve_workspace`), an unresolved
+    project, or an uninitialised kernel (via `open_project_kernel`).
+    """
+    from projectos.infrastructure.workspace_bridge import open_project_kernel
+    from projectos.infrastructure.workspace_manifest import resolve_workspace
+
+    workspace_root = Path(args.workspace)
+    workspace = resolve_workspace(workspace_root)
+    resolved = workspace.by_id(args.project) or workspace.by_name(args.project)
+    if resolved is None:
+        known = ", ".join(sorted(p.project_id for p in workspace.projects)) or "none"
+        raise NotFoundError(
+            f"Project {args.project!r} is not registered in this workspace",
+            detail=f"Known project identifiers: {known}.",
+        )
+    kernel = open_project_kernel(workspace_root, resolved.ref.name)
+    return workspace.manifest.name, resolved.project_id, kernel
+
+
+def _cmd_workspace_focus(args: argparse.Namespace) -> int:
+    """`workspace focus` — select the one project needing founder attention (P21).
+
+    Read-only selection over the P20 dashboard; computes nothing of its own and mutates
+    nothing. Returns INVARIANT_ERROR when the selected project is an integrity failure
+    (unsafe), otherwise OK.
+    """
+    from projectos.infrastructure.workspace_focus import (
+        FocusCategory,
+        build_focus,
+        render_focus,
+    )
+
+    result = build_focus(Path(args.workspace))
+    print(render_focus(result))
+
+    if result.category is FocusCategory.INTEGRITY_FAILURE:
+        return int(ExitCode.INVARIANT_ERROR)
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_inbox(args: argparse.Namespace) -> int:
+    """`workspace inbox [--project ID|NAME]` — the founder's operational inbox (P22/P23).
+
+    Without ``--project`` (P22): aggregates the existing read-models (P20 dashboard + P21
+    ranking) into one read-only list of the projects needing attention, most urgent
+    first. With ``--project`` (P23): drills into that one project and explains its inbox
+    item and the evidence behind its recommended next action. Both paths compute nothing
+    of their own, write nothing, and invoke no agent. Returns INVARIANT_ERROR when an
+    integrity failure is present (unsafe), otherwise OK; an unknown project id fails
+    closed with a typed non-zero exit via the reused dashboard.
+    """
+    if args.handoff and args.project is None:
+        raise ValidationError(
+            "--handoff requires --project",
+            detail="A handoff is generated for one selected inbox item: "
+                   "`projectos workspace inbox --project ID|NAME --handoff`.",
+        )
+
+    if args.project is not None and args.handoff:
+        from projectos.infrastructure.workspace_action_handoff import (
+            build_action_handoff,
+            render_action_handoff,
+        )
+
+        handoff = build_action_handoff(Path(args.workspace), args.project)
+        print(render_action_handoff(handoff))
+        if not handoff.integrity_ok:
+            return int(ExitCode.INVARIANT_ERROR)  # fail closed — do not execute
+        return int(ExitCode.OK)
+
+    if args.project is not None:
+        from projectos.infrastructure.workspace_inbox_detail import (
+            build_inbox_detail,
+            render_inbox_detail,
+        )
+
+        detail = build_inbox_detail(Path(args.workspace), args.project)
+        print(render_inbox_detail(detail))
+        if not detail.integrity_ok:
+            return int(ExitCode.INVARIANT_ERROR)
+        return int(ExitCode.OK)
+
+    from projectos.infrastructure.workspace_inbox import build_inbox, render_inbox
+
+    inbox = build_inbox(Path(args.workspace))
+    print(render_inbox(inbox))
+
+    if inbox.has_integrity_failure:
+        return int(ExitCode.INVARIANT_ERROR)
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_dashboard(args: argparse.Namespace) -> int:
+    """`workspace dashboard [--project <id|name>]` — one aggregated founder view (P20).
+
+    Aggregates the existing read-models into a single deterministic, read-only view. It
+    computes nothing of its own, writes nothing, and invokes no agent.
+    """
+    from projectos.infrastructure.workspace_dashboard import build_dashboard, render_dashboard
+
+    dashboard = build_dashboard(Path(args.workspace), project=args.project)
+    print(render_dashboard(dashboard))
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_recommend_agent(args: argparse.Namespace) -> int:
+    """`workspace recommend-agent --project <id|name> [--assignment <id>]` (P19).
+
+    Prints a deterministic, read-only agent recommendation. Invokes no agent, dispatches
+    nothing, and mutates nothing. Returns INVARIANT_ERROR when the state is blocked,
+    otherwise OK.
+    """
+    from projectos.infrastructure.workspace_agent_advisor import build_agent_advice, render_advice
+
+    advice = build_agent_advice(
+        Path(args.workspace), project=args.project, assignment=args.assignment
+    )
+    print(render_advice(advice))
+
+    if advice.is_blocked:
+        return int(ExitCode.INVARIANT_ERROR)
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_dispatch(args: argparse.Namespace) -> int:
+    """`workspace dispatch --project <id|name> --agent <type> [--assignment <id>]` (P18).
+
+    Prints one deterministic, read-only, copy-ready agent handoff package. Invokes no
+    agent, opens no network, and mutates nothing.
+    """
+    from projectos.infrastructure.workspace_dispatch import build_dispatch, render_dispatch
+
+    package = build_dispatch(
+        Path(args.workspace),
+        agent=args.agent,
+        project=args.project,
+        assignment=args.assignment,
+    )
+    print(render_dispatch(package))
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_plan(args: argparse.Namespace) -> int:
+    """`workspace plan --project <id|name>` — recommend one safe next action (P16).
+
+    Strictly read-only: it examines persisted state and recommends exactly one action,
+    never executing a transition. Returns INVARIANT_ERROR when the state is blocked/
+    invalid, otherwise OK (an actionable recommendation or a complete state).
+    """
+    from projectos.infrastructure.workspace_plan import build_plan, render_plan
+
+    plan = build_plan(Path(args.workspace), project=args.project)
+    print(render_plan(plan))
+
+    if plan.is_blocked:
+        return int(ExitCode.INVARIANT_ERROR)
+    return int(ExitCode.OK)
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionResult:
+    """The outcome of `workspace run`: the fresh plan, whether one action executed, and
+    the resulting assignment/status or the refusal reason."""
+
+    plan: Plan
+    executed: bool
+    result_assignment: str | None = None
+    result_status: str | None = None
+    refusal: str | None = None
+
+
+def execute_plan(workspace_root: Path, *, project: str, confirm: bool) -> ExecutionResult:
+    """Rebuild the P16 plan and, only with confirmation, execute at most one fully-
+    determined safe action by delegating exactly once to an existing typed helper.
+
+    Safe by construction: the *planner* marks which recommendations are executable
+    (`Recommendation.action`); this function never parses the command string, never
+    runs a shell/subprocess, and refuses — without mutating — when unconfirmed or when
+    the recommendation is not executable (founder/authority/evidence/external/blocked/
+    complete/placeholder). The plan is rebuilt here, immediately before execution, so a
+    stale recommendation can never be acted on; the delegated helper re-validates every
+    lifecycle, integrity, and active-slot guard.
+    """
+    from projectos.infrastructure.workspace_bridge import open_project_kernel
+    from projectos.infrastructure.workspace_manifest import resolve_workspace
+    from projectos.infrastructure.workspace_plan import ActionKind, build_plan
+
+    plan = build_plan(workspace_root, project=project)  # fresh state, right now
+    action = plan.recommendation.action
+
+    if not confirm:
+        return ExecutionResult(
+            plan,
+            executed=False,
+            refusal="not confirmed — re-run with --confirm to execute the recommended action",
+        )
+    if action is None:
+        return ExecutionResult(
+            plan,
+            executed=False,
+            refusal=(
+                f"{plan.recommendation.category.value} is not safely executable "
+                "(it needs a founder decision, external input, or is blocked/complete)"
+            ),
+        )
+
+    # Confirmed and executable: open a fresh kernel and delegate exactly once.
+    workspace = resolve_workspace(workspace_root.resolve())
+    resolved = workspace.by_id(project) or workspace.by_name(project)
+    assert resolved is not None  # build_plan already resolved it above
+    kernel = open_project_kernel(workspace_root, resolved.ref.name)
+
+    assignment: Assignment | None
+    if action.kind is ActionKind.GENERATE_NEXT:
+        assignment = run_next(kernel, dry_run=False).assignment
+    else:  # ActionKind.UNBLOCK — the concrete blocked id came from the fresh plan
+        assert action.assignment_id is not None
+        assignment = kernel.lifecycle.unblock(AssignmentId.parse(action.assignment_id))
+
+    return ExecutionResult(
+        plan,
+        executed=True,
+        result_assignment=str(assignment.id) if assignment is not None else None,
+        result_status=assignment.status.value if assignment is not None else None,
+    )
+
+
+def _cmd_workspace_run(args: argparse.Namespace) -> int:
+    """`workspace run --project <id|name> --confirm` — execute one safe planner
+    recommendation (P17). Mutation requires `--confirm`; every refusal is read-only.
+    """
+    from projectos.infrastructure.workspace_plan import render_plan
+
+    result = execute_plan(Path(args.workspace), project=args.project, confirm=args.confirm)
+
+    if not result.executed:
+        # Show the fresh plan and the refusal; nothing was mutated.
+        print(render_plan(result.plan))
+        print()
+        print(formatting.heading("NOT EXECUTED"))
+        print(f"  {result.refusal}")
+        return int(ExitCode.INVARIANT_ERROR)
+
+    # Executed: the delegated helper has already reported the canonical operation above.
+    print(formatting.heading(
+        f"EXECUTED  {result.plan.workspace_name}  →  {result.plan.project_id}"
+    ))
+    print(f"  recommendation  {result.plan.recommendation.category.value}")
+    print(f"  result          {result.result_assignment or '—'}  [{result.result_status or '—'}]")
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_next(args: argparse.Namespace) -> int:
+    """`workspace next --project <id|name>` — generate the next assignment for one
+    resolved project through the existing per-project next path (P11).
+
+    Workspace-level orchestration only: resolve exactly one project, open its kernel
+    through the existing bridge, and delegate to :func:`run_next` — the same
+    generation path `projectos next` uses. No new generator, persistence, or state.
+    Fails closed on an unresolved project or an uninitialised kernel; every other
+    guard (active slot, escalation, pack loading, integrity) is enforced unchanged
+    inside the lifecycle.
+    """
+    workspace_name, project_id, kernel = _open_workspace_project(args)
+
+    print(formatting.heading(f"WORKSPACE NEXT  {workspace_name}  →  {project_id}"))
+    run = run_next(kernel, dry_run=False)
+    if run.assignment is not None:
+        print(f"    Persisted {kernel.layout.assignment_file(str(run.assignment.id))}")
+    return run.exit_code
+
+
+def _cmd_workspace_assignment(args: argparse.Namespace) -> int:
+    """`workspace assignment <action> --project <id|name> [--assignment <id>]`.
+
+    Operate one selected project's assignment through the existing lifecycle
+    transitions, from the workspace, without entering the project repository.
+
+    Supported actions — `show`, `block`, `unblock` (P12), `verify` (P13),
+    `complete` (P14), `escalate`/`resolve` (P15) — each delegate to the exact
+    canonical path the per-project commands use: `kernel.assignments.get` (read),
+    `kernel.lifecycle.block`, `kernel.lifecycle.unblock`, :func:`run_verify`
+    (`projectos verify`), :func:`run_complete` (`projectos complete`),
+    :func:`run_escalate` and :func:`run_resolve` (`projectos founder escalate`/
+    `resolve`). Every guard (INV-6 audit integrity, evidence and verifier contracts,
+    the VERIFIED-state and §8.6.2 authority requirements for approval, the **founder-
+    only** authority for resolution (spec 9.2), the ESCALATE/FOUNDER_RESOLVE legal
+    transitions, dependency-closure, persistence, audit logging) is enforced unchanged
+    inside the lifecycle service — nothing is reimplemented here. Mutation stays inside
+    the selected project's kernel.
+
+    `resolve` targets an escalation by `--escalation` id (not an assignment) and is
+    founder-only; every other action operates on the selected or in-flight assignment.
+
+    Fails closed on an unresolved workspace/project, an uninitialised kernel, a missing
+    assignment (`get` raises `NotFoundError`), missing/invalid evidence or a verifier
+    error (`RuleFailure`), an unverified assignment, an unauthorized actor, incomplete
+    approvals, a non-founder resolution attempt, an illegal source status, a malformed
+    reason/summary/resolution, an integrity failure, or malformed state — every case
+    raised by the reused contracts.
+    """
+    workspace_name, project_id, kernel = _open_workspace_project(args)
+    header = formatting.heading(
+        f"WORKSPACE ASSIGNMENT  {workspace_name}  →  {project_id}"
+    )
+
+    # `resolve` targets an escalation (not an assignment), so it is handled before the
+    # in-flight-assignment resolution the other actions share.
+    if args.action == "resolve":
+        if not args.escalation:
+            raise ValidationError("`workspace assignment resolve` requires --escalation")
+        if not args.decision:
+            raise ValidationError("`workspace assignment resolve` requires --decision")
+        print(header)
+        return run_resolve(
+            kernel,
+            EscalationId.parse(args.escalation),
+            args.decision,
+            FounderDecision(args.outcome),
+        )
+
+    assignment_id = _resolve_assignment_id(kernel, args.assignment)
+
+    if args.action == "show":
+        assignment = kernel.assignments.get(assignment_id)
+        print(header)
+        print(formatting.assignment_summary(assignment))
+        if assignment.status is Status.VERIFIED:
+            print(f"    Approvals {kernel.lifecycle.approval_status(assignment).describe()}")
+        return int(ExitCode.OK)
+
+    if args.action == "verify":
+        print(header)
+        return run_verify(kernel, assignment_id, report_path=args.report)
+
+    if args.action == "complete":
+        print(header)
+        return run_complete(
+            kernel, assignment_id, role=Role(args.role), attest=args.attest
+        )
+
+    if args.action == "escalate":
+        if not args.summary.strip():
+            raise ValidationError(
+                "`workspace assignment escalate` requires --summary",
+                detail="A decision-ready escalation states the decision the founder must make.",
+            )
+        print(header)
+        return run_escalate(
+            kernel,
+            trigger=EscalationTrigger(args.trigger),
+            summary=args.summary,
+            options=_parse_options(args.option),
+            assignment_id=assignment_id,
+            recommendation=args.recommend,
+        )
+
+    if args.action == "block":
+        if not args.reason.strip():
+            raise ValidationError(
+                "`workspace assignment block` requires --reason",
+                detail="A blocker without a stated cause cannot be cleared by anyone else.",
+            )
+        assignment = kernel.lifecycle.block(assignment_id, args.reason)
+    else:  # unblock (argparse restricts `action` to the supported choices)
+        assignment = kernel.lifecycle.unblock(assignment_id)
+
+    print(header)
+    print(f"    Assignment {assignment_id}")
+    print(f"    Action     {args.action}")
+    print(f"    Status     {assignment.status.value.upper()}")
+    if args.action == "block":
+        print(f"    Reason     {args.reason}")
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_queue(args: argparse.Namespace) -> int:
+    """`workspace queue` — read-only assignment queue inspection (P10).
+
+    Partitions each project's persisted assignments into active / ready / blocked /
+    completed / other. Read-only. Returns ESCALATION_REQUIRED when any project's
+    state could not be read, otherwise OK.
+    """
+    from projectos.infrastructure.workspace_queue import build_queue, render_queue
+
+    queue = build_queue(Path(args.workspace), project=args.project)
+    print(render_queue(queue))
+
+    if queue.has_failures:
+        return int(ExitCode.ESCALATION_REQUIRED)
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_doctor(args: argparse.Namespace) -> int:
+    """`workspace doctor` — read-only diagnostics with remediation (P9).
+
+    Returns ESCALATION_REQUIRED when the overall outcome is a failure, otherwise OK
+    (a warning is still operational). Makes no changes.
+    """
+    from projectos.infrastructure.workspace_doctor import Outcome, build_report, render_report
+
+    report = build_report(Path(args.workspace), project=args.project)
+    print(render_report(report))
+
+    if report.outcome is Outcome.FAIL:
+        return int(ExitCode.ESCALATION_REQUIRED)
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_status(args: argparse.Namespace) -> int:
+    """`workspace status` — concise, read-only operational status (P8).
+
+    Returns ESCALATION_REQUIRED when the overall condition is a failure (unsafe to
+    operate), otherwise OK — a warning condition is still operational. Makes no
+    changes.
+    """
+    from projectos.infrastructure.workspace_status import Condition, build_status, render_status
+
+    status = build_status(Path(args.workspace), project=args.project)
+    print(render_status(status))
+
+    if status.condition is Condition.FAILURE:
+        return int(ExitCode.ESCALATION_REQUIRED)
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_handoff(args: argparse.Namespace) -> int:
+    """`workspace handoff` — deterministic, read-only session context (P7).
+
+    Renders the canonical handoff and returns ESCALATION_REQUIRED when any project's
+    integrity or state could not be verified, so a scripted session can branch on it;
+    otherwise OK. Makes no changes.
+    """
+    from projectos.infrastructure.workspace_handoff import build_handoff, render_handoff
+
+    handoff = build_handoff(Path(args.workspace), project=args.project)
+    print(render_handoff(handoff))
+
+    if any(project.failure is not None for project in handoff.projects):
+        return int(ExitCode.ESCALATION_REQUIRED)
+    return int(ExitCode.OK)
+
+
+def _cmd_workspace_discover(args: argparse.Namespace) -> int:
+    """`workspace discover` — find, validate, and classify projects (P6).
+
+    Report-only by default and under `--dry-run`; `--register` (without `--dry-run`)
+    registers valid, unregistered projects. Never overwrites an existing registration.
+    """
+    from projectos.infrastructure.workspace_discovery import (
+        DiscoveryStatus,
+        discover_workspace,
+    )
+
+    report = discover_workspace(
+        Path(args.workspace), register=args.register, dry_run=args.dry_run
+    )
+
+    mode = "REGISTER" if not report.dry_run else "DRY RUN"
+    print(formatting.heading(f"WORKSPACE DISCOVER  {report.root}  [{mode}]"))
+    print(
+        f"  scanned {report.scanned}    valid {len(report.valid)}    "
+        f"registered {len(report.already_registered)}    "
+        f"unregistered {len(report.unregistered)}    "
+        f"duplicates {len(report.duplicates)}    invalid {len(report.invalid)}"
+    )
+
+    if report.projects:
+        print()
+        symbol = {
+            DiscoveryStatus.REGISTERED: "=",
+            DiscoveryStatus.UNREGISTERED: "+",
+            DiscoveryStatus.DUPLICATE_IDENTIFIER: "!",
+            DiscoveryStatus.DUPLICATE_REPOSITORY: "!",
+            DiscoveryStatus.INVALID: "x",
+        }
+        for project in report.projects:
+            tag = " (registered now)" if project.registered_now else ""
+            ident = project.project_id or "—"
+            print(
+                f"  {symbol[project.status]} {project.rel_path}  "
+                f"[{project.status.value}]  id={ident}{tag}"
+            )
+            if project.conflicts_with is not None:
+                print(f"      conflicts with {project.conflicts_with}")
+            if project.error is not None:
+                print(f"      {project.error}")
+
+    print()
+    if not report.dry_run:
+        print(f"  Registered {len(report.newly_registered)} project(s) this run.")
+    elif report.unregistered:
+        print(
+            f"  {len(report.unregistered)} unregistered — re-run with --register to add them."
+        )
+    else:
+        print("  Nothing to register.")
     return int(ExitCode.OK)
 
 
@@ -209,14 +862,25 @@ def cmd_status(args: argparse.Namespace) -> int:
 # -- next ---------------------------------------------------------------------
 
 
-def cmd_next(args: argparse.Namespace) -> int:
-    """Deterministically perform the one applicable next action (spec P2 CLI contract).
+@dataclass(frozen=True, slots=True)
+class NextRun:
+    """The outcome of one next-assignment flow: an exit code plus the assignment it
+    acted on (generated/resumed/started), or ``None`` when none was (already active,
+    or a founder decision is required)."""
 
-    Precedence: an active assignment blocks (INV-1); otherwise the kernel generates
-    or resumes exactly one assignment, and the CLI activates a READY one. A founder
-    escalation returns exit 3.
+    exit_code: int
+    assignment: Assignment | None
+
+
+def run_next(kernel: Kernel, *, dry_run: bool = False) -> NextRun:
+    """The canonical next-assignment flow — the single generation path shared by
+    `projectos next` and `projectos workspace next`.
+
+    It enforces INV-1 (one active assignment), invokes `lifecycle.generate_next()`
+    exactly once, and activates the result exactly as `next` always has. All
+    persistence, audit logging, classification, and escalation happen inside the
+    lifecycle; this function only orchestrates and renders.
     """
-    kernel = _kernel(args)
     lifecycle = kernel.lifecycle
 
     def show(assignment: Assignment, *, source: str) -> None:
@@ -229,23 +893,23 @@ def cmd_next(args: argparse.Namespace) -> int:
         show(active, source="existing (active)")
         print()
         print("  INV-1 permits one active assignment. Finish, block, or cancel it first.")
-        return int(ExitCode.OK)
+        return NextRun(int(ExitCode.OK), None)
 
     result = lifecycle.generate_next()
 
     if result.escalation is not None:
         print(formatting.heading("NEXT UNDETERMINED — FOUNDER DECISION REQUIRED"))
         print(formatting.escalation_summary(result.escalation))
-        return int(ExitCode.ESCALATION_REQUIRED)
+        return NextRun(int(ExitCode.ESCALATION_REQUIRED), None)
 
     assert result.assignment is not None
     candidate = result.assignment
     source = result.decision.source
 
-    if args.dry_run:
+    if dry_run:
         print(formatting.heading("NEXT (dry run)"))
         show(candidate, source=source)
-        return int(ExitCode.OK)
+        return NextRun(int(ExitCode.OK), candidate)
 
     if candidate.status is Status.REJECTED:
         # A rejected assignment is still the next thing to do; resuming carries its
@@ -255,7 +919,7 @@ def cmd_next(args: argparse.Namespace) -> int:
         show(resumed, source=source)
         print()
         print(formatting.briefing_block(briefing.render()))
-        return int(ExitCode.OK)
+        return NextRun(int(ExitCode.OK), resumed)
 
     if candidate.status is not Status.READY:
         print(formatting.heading("NEXT ASSIGNMENT NOT YET READY"))
@@ -263,26 +927,38 @@ def cmd_next(args: argparse.Namespace) -> int:
         if candidate.status is Status.DRAFT:
             print()
             print("  Classification is deferred; see `projectos history` for the reason.")
-        return int(ExitCode.OK)
+        return NextRun(int(ExitCode.OK), candidate)
 
     started, briefing = lifecycle.start(candidate.id)
     print(formatting.heading("STARTED"))
     show(started, source=source)
     print()
     print(formatting.briefing_block(briefing.render()))
-    return int(ExitCode.OK)
+    return NextRun(int(ExitCode.OK), started)
+
+
+def cmd_next(args: argparse.Namespace) -> int:
+    return run_next(_kernel(args), dry_run=args.dry_run).exit_code
 
 
 # -- verify -------------------------------------------------------------------
 
 
-def cmd_verify(args: argparse.Namespace) -> int:
-    kernel = _kernel(args)
+def run_verify(
+    kernel: Kernel, assignment_id: AssignmentId, *, report_path: Path | None
+) -> int:
+    """The canonical verification flow — the single evidence-verification path shared
+    by `projectos verify` and `projectos workspace assignment verify`.
+
+    It invokes `lifecycle.verify()` exactly once (which guards INV-6 integrity,
+    ingests the claim, runs the verifier against repository evidence, transitions, and
+    persists + audits), renders the canonical report, and raises `RuleFailure` when
+    the evidence does not pass. Nothing here evaluates evidence or decides a verdict.
+    """
     lifecycle = kernel.lifecycle
-    assignment_id = _resolve_assignment_id(kernel, args.assignment)
 
     # A claim only stages evidence for verification; it never decides anything.
-    outcome = lifecycle.verify(assignment_id, _load_claim(assignment_id, args.report))
+    outcome = lifecycle.verify(assignment_id, _load_claim(assignment_id, report_path))
     print(formatting.verification_report(outcome.report))
 
     if outcome.report.passed:
@@ -297,6 +973,12 @@ def cmd_verify(args: argparse.Namespace) -> int:
         f"{len(outcome.report.failures)} of {len(outcome.report.results)} criteria failed",
         detail="Fix the gaps above, then run `projectos verify` again.",
     )
+
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    kernel = _kernel(args)
+    assignment_id = _resolve_assignment_id(kernel, args.assignment)
+    return run_verify(kernel, assignment_id, report_path=args.report)
 
 
 def _load_claim(assignment_id: AssignmentId, report_path: Path | None) -> CompletionClaim:
@@ -340,13 +1022,21 @@ def _load_claim(assignment_id: AssignmentId, report_path: Path | None) -> Comple
 # -- complete -----------------------------------------------------------------
 
 
-def cmd_complete(args: argparse.Namespace) -> int:
-    kernel = _kernel(args)
-    lifecycle = kernel.lifecycle
-    assignment_id = _resolve_assignment_id(kernel, args.assignment)
-    role = Role(args.role)
+def run_complete(
+    kernel: Kernel, assignment_id: AssignmentId, *, role: Role, attest: bool
+) -> int:
+    """The canonical completion flow — the single approval/attestation path shared by
+    `projectos complete` and `projectos workspace assignment complete`.
 
-    if args.attest:
+    With ``attest`` it records a human attestation; otherwise it records an approval
+    and the lifecycle auto-CLOSEs once the workflow mode's required roles are
+    satisfied. Both delegate to `lifecycle.attest` / `lifecycle.approve`, which enforce
+    INV-6 integrity, the VERIFIED-state requirement, §8.6.2 authority, the legal
+    transition, and persistence + audit. Nothing here decides authority or closure.
+    """
+    lifecycle = kernel.lifecycle
+
+    if attest:
         lifecycle.attest(assignment_id, role)
         print(f"  Attestation recorded for {assignment_id} as {role.value}.")
         print("  Run `projectos verify` to re-evaluate the criteria.")
@@ -364,6 +1054,12 @@ def cmd_complete(args: argparse.Namespace) -> int:
     print(f"  Approval recorded for {assignment_id} as {role.value}.")
     print(f"  {status.describe()}")
     return int(ExitCode.OK)
+
+
+def cmd_complete(args: argparse.Namespace) -> int:
+    kernel = _kernel(args)
+    assignment_id = _resolve_assignment_id(kernel, args.assignment)
+    return run_complete(kernel, assignment_id, role=Role(args.role), attest=args.attest)
 
 
 # -- block --------------------------------------------------------------------
@@ -395,6 +1091,55 @@ def cmd_block(args: argparse.Namespace) -> int:
 # -- founder ------------------------------------------------------------------
 
 
+def run_escalate(
+    kernel: Kernel,
+    *,
+    trigger: EscalationTrigger,
+    summary: str,
+    options: tuple[EscalationOption, ...],
+    assignment_id: AssignmentId | None,
+    recommendation: str | None,
+) -> int:
+    """The canonical escalation flow — the single path shared by `projectos founder
+    escalate` and `projectos workspace assignment escalate`.
+
+    It calls `lifecycle.escalate()` exactly once (which guards INV-6 integrity,
+    validates the ESCALATE transition before any write, persists the escalation, and
+    freezes the scoped assignment to ESCALATED). Nothing here creates an escalation
+    type or decides authority.
+    """
+    escalation = kernel.lifecycle.escalate(
+        trigger=trigger,
+        summary=summary,
+        options=options,
+        assignment_id=assignment_id,
+        recommendation=recommendation,
+    )
+    print(formatting.heading(f"ESCALATION OPENED  {escalation.id}"))
+    print(formatting.escalation_summary(escalation))
+    return int(ExitCode.ESCALATION_REQUIRED)
+
+
+def run_resolve(
+    kernel: Kernel, escalation_id: EscalationId, decision: str, outcome: FounderDecision
+) -> int:
+    """The canonical resolution flow — the single **founder-only** path shared by
+    `projectos founder resolve` and `projectos workspace assignment resolve`.
+
+    It calls `lifecycle.resolve()` exactly once (which guards INV-6 integrity, enforces
+    that the acting identity is the founder (spec 9.2), validates the decision against
+    the escalation's options, persists the resolution, and re-drives the state
+    machine). Nothing here fabricates founder identity or a decision.
+    """
+    escalation, assignment = kernel.lifecycle.resolve(escalation_id, decision, outcome)
+    print(formatting.heading(f"RESOLVED  {escalation.id}"))
+    print(f"  Decision  {decision}  ({outcome.value})")
+    if assignment is not None:
+        print()
+        print(formatting.assignment_summary(assignment))
+    return int(ExitCode.OK)
+
+
 def cmd_founder(args: argparse.Namespace) -> int:
     kernel = _kernel(args)
     lifecycle = kernel.lifecycle
@@ -411,28 +1156,21 @@ def cmd_founder(args: argparse.Namespace) -> int:
         return int(ExitCode.ESCALATION_REQUIRED)
 
     if args.founder_command == "escalate":
-        escalation = lifecycle.escalate(
+        return run_escalate(
+            kernel,
             trigger=EscalationTrigger(args.trigger),
             summary=args.summary,
             options=_parse_options(args.option),
             assignment_id=AssignmentId.parse(args.assignment) if args.assignment else None,
             recommendation=args.recommend,
         )
-        print(formatting.heading(f"ESCALATION OPENED  {escalation.id}"))
-        print(formatting.escalation_summary(escalation))
-        return int(ExitCode.ESCALATION_REQUIRED)
 
-    escalation, assignment = lifecycle.resolve(
+    return run_resolve(
+        kernel,
         EscalationId.parse(args.escalation),
         args.decision,
         FounderDecision(args.outcome),
     )
-    print(formatting.heading(f"RESOLVED  {escalation.id}"))
-    print(f"  Decision  {args.decision}  ({args.outcome})")
-    if assignment is not None:
-        print()
-        print(formatting.assignment_summary(assignment))
-    return int(ExitCode.OK)
 
 
 def _parse_options(raw_options: list[str]) -> tuple[EscalationOption, ...]:
@@ -455,6 +1193,31 @@ def _parse_options(raw_options: list[str]) -> tuple[EscalationOption, ...]:
 
 
 # -- history ------------------------------------------------------------------
+
+
+def cmd_new(args: argparse.Namespace) -> int:
+    """Scaffold a fleet-aligned project (PROJECT-BOOTSTRAP)."""
+    from projectos.infrastructure.project_bootstrap import scaffold_project
+
+    result = scaffold_project(
+        args.name, args.desc, projects_parent=args.parent, drive_root=args.drive_root
+    )
+    print(formatting.heading(f"NEW PROJECT  {args.name}"))
+    for step in result.steps:
+        marker = "ok " if step.ok else "FAIL"
+        print(f"  [{marker}] {step.step}: {step.detail}")
+    if not result.ok:
+        print("  Scaffold stopped at the first failure; completed steps are listed above.")
+        return int(ExitCode.INVARIANT_ERROR)
+    print()
+    print("  The ONLY founder paste — 3-line pointer for the new Claude Project:")
+    print()
+    for line in result.pointer_text.strip().splitlines():
+        print(f"    {line}")
+    print()
+    print("  Founder-only next acts: create the Claude Project + paste the pointer;")
+    print("  answer CHAT-01; register the wake task (docs/wake-task.cmd) when ratified.")
+    return int(ExitCode.OK)
 
 
 def cmd_history(args: argparse.Namespace) -> int:

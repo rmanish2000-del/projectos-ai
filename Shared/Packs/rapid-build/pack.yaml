@@ -1,0 +1,11 @@
+# rapid-build pack — declarative, loadable by the ProjectOS kernel.
+schema_version: 1
+name: rapid-build
+version: 0.1.0
+domain: generic
+requires_projectos: ">=0.1.0,<0.2.0"
+pipeline:
+  - phase: foundation
+    templates:
+      - define-task
+      - build-task

@@ -1,0 +1,4 @@
+# rapid-build: project rules — schema v1.
+schema_version: 1
+pack: rapid-build
+rules: []

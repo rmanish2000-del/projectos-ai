@@ -1,0 +1,57 @@
+{
+  "_about": "Defect classes for this repository, read by projectos.infrastructure.defect_sweep. Declarations (name, source, instances, enforcement_test) are founder-owned and hand-written; the sweep only ever adds an observed 'last_sweep' block. A class is closed when its enforcement test makes a NEW instance fail the build.",
+  "classes": {
+    "DC-7": {
+      "name": "Unauthenticated instruction channel",
+      "status": "OPEN",
+      "description": "Every seat takes instructions from files in one Drive folder with no signature and no way to tell an issuer's assignment from a file that simply appeared. Seats run on the founder's own identity, so a seat acting on a bad instruction acts as him. The protection is written here as ABSENT-until-adopted, not as present because a module exists.",
+      "source": "Assignment INBOX-TRUST-BOUNDARY, 2026-08-15; DC-6 discipline: a protection that does not exist is written as absent",
+      "enforcement_test": "tests/test_inbox_auth.py",
+      "what_exists": "The mechanism: projectos.infrastructure.inbox_auth (HMAC-SHA256 stamp, key out-of-band, fail-closed verify, refusal reported). Built and tested 2026-08-17.",
+      "what_is_absent": "Adoption. No issuer signs yet and no seat verifies-before-acting yet, so the channel itself is still open. The mechanism cannot be armed unilaterally by one seat: an enforcing seat would refuse every currently-legitimate unsigned assignment.",
+      "closes_when": "Issuers sign every assignment (Chat holds the key in its instructions), every seat verifies before acting, and the wake scheduler gates on verification. MUST close before the wake is armed — after arming, no human reads a file before a seat acts on it.",
+      "transition": "INBOX-KEY-GENERATION + amendment (2026-08-17): stamps are VERSIONED from day one (AUTH: HMAC-SHA256 <id>:<hex>; unversioned stamps refuse); the keyring holds id:secret entries, newest last signs, every listed id verifies, and rotation is append-k2 / sign-with-k2 / accept-both / founder-retires-k1; the verify path has no issuer, filename or folder parameter, so no bypass exists to remove — pinned structurally by test. The sign/verify CLI and the INBOX-AUTH-ENFORCEMENT switch exist; the switch is DECLARED tolerant (unsigned files act and are reported; a present-but-wrong stamp is refused in every mode — tampering has no grace period). The founder flips it to enforcing by editing the parameter registry after key distribution. Key generation and distribution are the founder's acts; the key value never touches Drive, a repo, a report, or any seat's output.",
+      "tier_note": "Authentication does not raise a file's tier. An authenticated ESCALATE ask is still refused; being genuine is not being authorised. Pinned by test."
+    },
+    "DC-1": {
+      "name": "A value believed rather than observed",
+      "description": "A claim accepted because something reported it, rather than because it was read from the thing itself. The general form of every trust-the-report defect: an exit code trusted instead of a parsed summary, a seat tag trusted instead of a repo root, a clock trusted instead of an anchored instant.",
+      "source": "TradeOS observed-fact rule (DC-1); extended to fleet time by assignment FLEET-CLOCK, 2026-08-14",
+      "enforcement_test": "tests/test_fleet_clock.py",
+      "instances": [
+        {
+          "id": "DC-1/time/warrant-5h30m",
+          "observed": "2026-08-13",
+          "who": "WARRANT seat",
+          "what": "`TZ='Asia/Kolkata' date` returned GMT with no tzdata present and no error, putting reported times 5.5 hours out.",
+          "why_it_is_this_class": "A timezone was requested and the answer believed; the offset was never checked against anything.",
+          "now_caught_by": "now_ist() converts by a fixed +05:30 offset and never depends on a named-zone lookup; tzdata is consulted only as a cross-check that raises on disagreement."
+        },
+        {
+          "id": "DC-1/time/chat-assumed-stamps",
+          "observed": "2026-08-14, amended 2026-08-15 (SWEEP-2-RULINGS)",
+          "who": "Chat — and Chat only. No seat instance has been measured: seat-written stamps measure at 4s against Drive server time, so the seats' clocks are sound and this family is not fleet-wide.",
+          "what": "Chat stamped filenames and prose dates from an assumed time rather than a read one, on MORE THAN THREE occasions. Measured against Drive's server-side timestamps on 2026-08-15: 162 minutes, 21.7, 17.9, 5.2.",
+          "worst_measured_minutes": 162,
+          "magnitude_status": "MEASURED against Drive server time (supersedes the 2026-08-14 UNVERIFIED statement)",
+          "measured_by": "Chat, running the Chat-owned half of the split check against Drive createdTime/modifiedTime — its first real run, and it caught its own author.",
+          "fifth_instance": "2026-08-15: a competitor note stamped 2026-08-14 while Drive read 2026-08-15. Recorded because the count is 'more than three', not exactly three.",
+          "rule_adopted_by_chat": "Read Drive before writing any date, in a filename or in prose.",
+          "why_it_is_this_class": "The time was supplied from belief rather than read. It sorts, so it corrupts 'oldest file first' ordering silently.",
+          "amendment_history": [
+            {
+              "on": "2026-08-14",
+              "said": "At least three occasions, MAGNITUDE UNVERIFIED — a 64-minute figure had been attributed to Chat's clock error, but it was measured against the local mirror's mtime, which for a synced file is the sync write, so clock error and sync latency were not separable from a seat.",
+              "superseded_by": "the 2026-08-15 measurement above",
+              "why": "The anchor problem it named was real and the fix was to split the check, not to widen a tolerance. Once the Chat-owned half ran against the correct anchor, the magnitude stopped being unknowable. Superseded, not deleted: the earlier statement was honest about what could be seen at the time."
+            }
+          ],
+          "now_caught_by": "stamp_for_filename() is the single way to produce a stamp and raises rather than returning a plausible time when the clock cannot be established. For synced files the magnitude is visible only against Drive's server-side timestamp — the Chat-owned half of the split check, now demonstrated live."
+        }
+      ],
+      "tolerance": "DECLARED by the founder on 2026-08-14 at 120s on the resolution argument — see docs/parameter_registry.json (FLEET-CLOCK-SKEW-TOLERANCE). Code still has no default: it resolves the value and fails closed when absent.",
+      "check_ownership": "Split by anchor, ruled 2026-08-14. Locally-written files: PROJECTOS, via check_local_file against local mtime (the authoring moment here). Synced files: CHAT, against Drive's server-side createdTime/modifiedTime — this seat cannot see that fact and refuses the check rather than measuring sync latency and calling it clock error.",
+      "split_validated": "2026-08-15. Both halves have now run against real files. Chat's half produced measured magnitudes (worst 162 minutes) and caught the participant who owns it; the local half measured seat-written stamps at 4s. The seat that could not see the fact would have reported sync latency as clock error, and the seat that could see it found a real 162-minute error — which is the whole argument for assigning a check to whoever can see the fact."
+    }
+  }
+}

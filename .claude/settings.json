@@ -1,0 +1,41 @@
+{
+  "_about": "Headless-wake allowlist (REMOVE-THE-GO; ratified RATIFICATION-WAKE-CADENCE 2026-08-18). Replaces --dangerously-skip-permissions in scripts/wake.ps1. Deny-by-default is the fence: in print mode an unanswerable permission prompt is a denial, so any tool call not matching a rule below fails closed and the seat reports BLOCKED instead of acting. MCP tools, WebFetch/WebSearch, gh beyond the two rules here, and all other shell commands are therefore unavailable to a headless wake. Widening this list is an allow-list widening — founder-ratified, never a seat's own act.",
+  "permissions": {
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit",
+      "Write",
+      "PowerShell(git:*)",
+      "Bash(git:*)",
+      "PowerShell(py -3.11 -m projectos:*)",
+      "Bash(py -3.11 -m projectos:*)",
+      "PowerShell(python -m projectos:*)",
+      "Bash(python -m projectos:*)",
+      "PowerShell(py -3.11 -m pytest:*)",
+      "PowerShell(python -m pytest:*)",
+      "Bash(python -m pytest:*)",
+      "PowerShell(py -3.11 -m ruff:*)",
+      "PowerShell(python -m ruff:*)",
+      "PowerShell(py -3.11 -m mypy:*)",
+      "PowerShell(python -m mypy:*)",
+      "PowerShell(Get-ChildItem:*)",
+      "PowerShell(Get-Content:*)",
+      "PowerShell(Test-Path:*)",
+      "PowerShell(Move-Item:*)",
+      "PowerShell(gh auth status:*)",
+      "Bash(gh auth status:*)",
+      "PowerShell(gh repo create:*)",
+      "Bash(gh repo create:*)"
+    ],
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "WebFetch",
+      "WebSearch"
+    ]
+  }
+}

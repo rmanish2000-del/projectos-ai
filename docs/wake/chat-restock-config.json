@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "seats": [
+    "AIW",
+    "CODEX",
+    "COWORK",
+    "GROK",
+    "PROJECTOS",
+    "TRADEOS",
+    "WARRANT",
+    "WEB"
+  ],
+  "repositories": {
+    "rmanish2000-del/aiworkspace-core": {
+      "root": "C:\\AI-Workspace"
+    },
+    "rmanish2000-del/aiworkspace-hq-web": {
+      "root": "C:\\Push-to-Prod-2026\\aiworkspace-hq-web"
+    },
+    "rmanish2000-del/projectos-ai": {
+      "root": "C:\\ProjectOS-AI"
+    },
+    "rmanish2000-del/tradeos-ai": {
+      "root": "C:\\dev\\TradeOS-AI"
+    },
+    "rmanish2000-del/warrant": {
+      "root": "C:\\Push-to-Prod-2026\\warrant"
+    },
+    "rmanish2000-del/warrant-mcp": {
+      "root": "C:\\Push-to-Prod-2026\\warrant-mcp"
+    }
+  }
+}

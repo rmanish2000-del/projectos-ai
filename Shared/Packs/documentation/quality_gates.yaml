@@ -1,0 +1,4 @@
+# documentation: quality gates — schema v1.
+schema_version: 1
+pack: documentation
+gates: []

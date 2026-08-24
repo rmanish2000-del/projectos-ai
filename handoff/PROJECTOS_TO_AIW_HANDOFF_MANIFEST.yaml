@@ -1,0 +1,274 @@
+# PROJECTOS → AI WORKSPACE — Canonical Corpus Handoff Manifest
+# Deterministic, provenance-bearing inventory of every corpus document AI Workspace
+# requires. Machine-readable source of truth for the handoff. Entries sorted by document_id.
+#
+# HASHES ARE REAL: computed SHA-256 over the actual committed files in the ProjectOS
+# repository (C:\ProjectOS-AI). Re-verify with: sha256sum <file>.
+#
+# STATUS IS HONEST: ratification (PO-11) has NOT been executed. Nothing here is
+# "ratified". The design corpus is PROPOSED_CANONICAL (pending PO-10 sign-off).
+# No source is elevated merely because it is complete.
+
+manifest:
+  schema_version: 1
+  name: projectos-to-aiw-corpus-handoff
+  corpus_version: "Foundational Corpus v1.0 (PROPOSED — not ratified)"
+  hash_algorithm: sha256
+  upstream_source_of_truth: "ProjectOS repository (C:\\ProjectOS-AI)"
+  ratification_state: NOT_EXECUTED   # PO-10 approval + PO-11 run both pending
+  downloads_is_canonical: false      # constraint: Downloads is never a canonical repository
+  generated_by: "PO-12 (Claude Cowork, Lane B)"
+  notes: >
+    Every entry references an actual file by path + SHA-256. Consumers MUST verify the
+    hash before use (integrity check). Status reflects GOVERNANCE/ratification state, not
+    completeness. build_status is a separate axis (implemented vs spec).
+
+# ---- STATUS VOCABULARY (closed set) -------------------------------------------
+status_vocabulary:
+  PROPOSED_CANONICAL: "Authored, internally consistent, awaiting PO-10 sign-off + PO-11 execution. Safe to DESIGN against; may NOT be cited as ratified."
+  REFERENCE:          "Informational finding of fact; non-binding (Constitution T3)."
+  GOVERNANCE_INSTRUMENT: "Process/approval document (proposed); not a design input to implement against."
+  SEED_UNVERIFIED:    "Data records requiring repository verification (B3) before any use. NOT included in this handoff."
+  HELD:               "Explicitly deferred; remains held. Not for use."
+
+# ---- DOCUMENTS ----------------------------------------------------------------
+documents:
+
+  - document_id: KERNEL
+    canonical_name: "ProjectOS Kernel — Foundation Spec"
+    version: "v0.1"
+    status: PROPOSED_CANONICAL
+    build_status: IMPLEMENTED          # src/projectos, 479 tests (verified)
+    tier: T1
+    owner: POS
+    source_path: "PROJECTOS_V0_1_FOUNDATION_SPEC.md"
+    sha256: "34f30e70bd1f5a4832b70dbbd4a03d15867d1b1d6799184c47dd28297cc2e371"
+    bytes: 61337
+    dependencies: []
+
+  - document_id: PO-1
+    canonical_name: "ProjectOS Methodology v2.0"
+    version: "v2.0"
+    status: PROPOSED_CANONICAL
+    build_status: SPEC
+    tier: T1
+    owner: POS
+    source_path: "PROJECTOS_METHODOLOGY_V2.md"
+    sha256: "37c5466e5620e80160569ea12a71a61909346b3e749d3b44c360d830140a92f0"
+    bytes: 50066
+    dependencies: [KERNEL, PO-2]
+
+  - document_id: PO-2
+    canonical_name: "Platform Genome v1.0"
+    version: "v1.0"
+    status: PROPOSED_CANONICAL
+    build_status: SPEC
+    tier: T1
+    owner: POS
+    source_path: "PLATFORM_GENOME_V1.md"
+    sha256: "e5a8141adbbdd9903afdaa781d5c572c5746aab135357023bc252786fe3bf171"
+    bytes: 50505
+    dependencies: [KERNEL, PO-1]
+
+  - document_id: PO-2.5
+    canonical_name: "Architecture Consistency Review"
+    version: "v1.0"
+    status: REFERENCE
+    build_status: SPEC
+    tier: T3
+    owner: POS
+    source_path: "PO-2.5_ARCHITECTURE_CONSISTENCY_REVIEW.md"
+    sha256: "993ca7d23ef57a914235a3cf6638b80abf04d1be84cc8c30e20c0fb2dfdb03fb"
+    bytes: 22438
+    dependencies: [PO-1, PO-2]
+
+  - document_id: PO-3
+    canonical_name: "AI Workspace Integration & Ownership Specification"
+    version: "v1.0"
+    status: PROPOSED_CANONICAL
+    build_status: SPEC
+    tier: T1
+    owner: POS
+    source_path: "PO-3_AI_WORKSPACE_INTEGRATION_SPEC.md"
+    sha256: "884d68c309491acf3d7ee1db45c9829bdf0385d32a4beead22855b4eee44d504"
+    bytes: 31155
+    dependencies: [KERNEL, PO-1, PO-2]
+
+  - document_id: PO-4
+    canonical_name: "Ecosystem Governance Framework"
+    version: "v1.0"
+    status: PROPOSED_CANONICAL
+    build_status: SPEC
+    tier: T1
+    owner: POS
+    source_path: "PO-4_ECOSYSTEM_GOVERNANCE_FRAMEWORK.md"
+    sha256: "69efbb7faeb17316c3f1dbaf361a1daa1573577bf0e94b819d98bdca70114439"
+    bytes: 24179
+    dependencies: [KERNEL, PO-1, PO-2, PO-3]
+
+  - document_id: PO-5
+    canonical_name: "Governance Metrics & Platform Health Model"
+    version: "v1.0"
+    status: PROPOSED_CANONICAL
+    build_status: SPEC
+    tier: T1
+    owner: POS
+    source_path: "PO-5_GOVERNANCE_METRICS_PLATFORM_HEALTH.md"
+    sha256: "0afc8a4ba74c60d889adab9770ac381740f9282c62d23d87f9d5dd0e6187cf2a"
+    bytes: 25002
+    dependencies: [PO-1, PO-2, PO-3, PO-4, PO-7]
+
+  - document_id: PO-6
+    canonical_name: "ProjectOS Constitution v1.0"
+    version: "v1.0"
+    status: PROPOSED_CANONICAL
+    build_status: SPEC
+    tier: T0
+    owner: POS
+    source_path: "PROJECTOS_CONSTITUTION_V1.md"
+    sha256: "2b79891bae9061355d4c60c53cff27a9ea042a98e62d4ae891010e7818107c09"
+    bytes: 33636
+    dependencies: [KERNEL, PO-1, PO-2, PO-3, PO-4, PO-5]
+
+  - document_id: PO-7
+    canonical_name: "Platform Metadata Architecture (incl. Capability Registry / CR-1 SPECIFICATION)"
+    version: "v1.0"
+    status: PROPOSED_CANONICAL
+    build_status: SPEC
+    tier: T2
+    owner: POS
+    source_path: "PO-7_PLATFORM_METADATA_ARCHITECTURE.md"
+    sha256: "ffe8a56496fe96efaceb62d5f22442cb25736f283c88eea4bc08998edcc66852"
+    bytes: 25695
+    dependencies: [PO-2, PO-3, PO-4]
+    contains: "CR-1 Capability Registry SPECIFICATION (§2, §9). Contains NO seeded capability records. See CR1_SPEC_AND_SEED_STATUS.md."
+
+  - document_id: PO-8
+    canonical_name: "Foundational Corpus Integration"
+    version: "v1.0"
+    status: PROPOSED_CANONICAL
+    build_status: SPEC
+    tier: T2
+    owner: POS
+    source_path: "FOUNDATIONAL_CORPUS_INTEGRATION.md"
+    sha256: "e598a993dae6f88d1cdcc9e187f20af7d2be5e6440f6a81c9b46abdc169d0e26"
+    bytes: 27690
+    dependencies: [PO-6, KERNEL, PO-1, PO-2, PO-3, PO-4, PO-5, PO-7]
+
+  - document_id: PO-9
+    canonical_name: "Canonical Ecosystem Language & Naming Standard v1.0"
+    version: "v1.0"
+    status: PROPOSED_CANONICAL
+    build_status: SPEC
+    tier: T2
+    owner: POS
+    source_path: "PO-9_ECOSYSTEM_LANGUAGE_STANDARD.md"
+    sha256: "7dff1d3a7fc4cce60d7ca5ed4dea4f82b571dd01b467020aa3e980860bdc5702"
+    bytes: 27200
+    dependencies: [PO-6, PO-2, PO-3, PO-4, PO-7]
+    held_items: "NC-7 (Experience/Design/Enterprise-Experience/Encounter-Intelligence cluster) is HELD pending founder concept definitions."
+
+  - document_id: PO-10
+    canonical_name: "Canonical Ratification & Correction Package"
+    version: "v1.0"
+    status: GOVERNANCE_INSTRUMENT
+    build_status: SPEC
+    tier: T3
+    owner: POS
+    source_path: "PO-10_RATIFICATION_AND_CORRECTION_PACKAGE.md"
+    sha256: "bd47ad51e03ed8b1e8206fcc14515e90df71d41de157d917d171407533103d4e"
+    bytes: 16314
+    dependencies: [PO-6, PO-8, PO-9, PO-2.5]
+
+  - document_id: PO-11
+    canonical_name: "Ratification Execution Plan"
+    version: "v1.0"
+    status: GOVERNANCE_INSTRUMENT
+    build_status: SPEC
+    tier: T3
+    owner: POS
+    source_path: "PO-11_RATIFICATION_EXECUTION_PLAN.md"
+    sha256: "17bdb1880e3dea8427b9b0ce5664496543af3e53ff60dd770a08ea8f98689bba"
+    bytes: 17873
+    dependencies: [PO-10, PO-6, PO-4]
+
+  - document_id: RUNTIME
+    canonical_name: "ProjectOS Workspace Runtime Specification (P4)"
+    version: "v1.0"
+    status: PROPOSED_CANONICAL
+    build_status: SPEC
+    tier: T2
+    owner: POS
+    source_path: "PROJECTOS_WORKSPACE_RUNTIME_SPEC.md"
+    sha256: "e393539ac0207f48e8d05e1ec22600fbf5a58edcaab35faa7bc2cef910311fec"
+    bytes: 41284
+    dependencies: [KERNEL]
+
+  - document_id: ROADMAP
+    canonical_name: "ProjectOS Canonical Implementation Roadmap"
+    version: "v1.0"
+    status: PROPOSED_CANONICAL
+    build_status: SPEC
+    tier: T2
+    owner: POS
+    source_path: "PROJECTOS_IMPLEMENTATION_ROADMAP.md"
+    sha256: "48af2b3f1aaae04b5e3db760c2dac51f506e37c1ac83b506b4153d1e4a7d6e27"
+    bytes: 20790
+    dependencies: [PO-8, PO-7]
+
+  - document_id: KERNEL-ARCH
+    canonical_name: "Kernel architecture notes"
+    version: "current"
+    status: REFERENCE
+    build_status: IMPLEMENTED
+    tier: T2
+    owner: POS
+    source_path: "docs/architecture.md"
+    sha256: "285741a17e08d8279c8658fba86b9a700dc7b44ac49d11f63a889a03f60003e8"
+    bytes: 17932
+    dependencies: [KERNEL]
+
+  - document_id: KERNEL-CLI
+    canonical_name: "Kernel CLI reference"
+    version: "current"
+    status: REFERENCE
+    build_status: IMPLEMENTED
+    tier: T2
+    owner: POS
+    source_path: "docs/cli.md"
+    sha256: "e57ec306ab9a30e9a65b2bec47d221ab5e1c1c01dfa1de1604da0db1ac035910"
+    bytes: 45989
+    dependencies: [KERNEL]
+
+  - document_id: KERNEL-README
+    canonical_name: "ProjectOS README"
+    version: "current"
+    status: REFERENCE
+    build_status: IMPLEMENTED
+    tier: T2
+    owner: POS
+    source_path: "README.md"
+    sha256: "740ed50fc76bfdfff0312876a46df0f0ad3a36968dd0281adbccfaba159ac59b"
+    bytes: 6163
+    dependencies: [KERNEL]
+
+# ---- CR-1 SEEDED DATA (explicitly EXCLUDED) -----------------------------------
+cr1_seed:
+  status: SEED_UNVERIFIED
+  present_in_this_handoff: false
+  present_in_projectos_repo: false     # verified: no seed/registry-record file exists on disk
+  rule: >
+    Seeded capability records are DATA, not specification. They are NOT included in this
+    handoff and must NOT be imported into any AI Workspace registry until verified by the
+    B3 assignment (see B3_SEED_VERIFICATION_CONTRACT.md). CR-1 SPECIFICATION lives inside
+    PO-7; CR-1 DATA does not exist here and may not be invented.
+
+# ---- HANDOFF CLASSIFICATION (how AIW consumes each) ---------------------------
+handoff_classification:
+  default: VENDORED_SNAPSHOT   # AIW stores a pinned, hash-verified copy; ProjectOS remains upstream source of truth
+  all_documents: VENDORED_SNAPSHOT
+  cr1_seed: EXCLUDED_PENDING_B3_VERIFICATION
+  precedence: >
+    Source-of-truth precedence: ProjectOS repo (upstream) > AIW vendored snapshot (downstream).
+    On hash drift, ProjectOS wins and AIW re-vendors. Downloads / conversation history /
+    any unverified location are NEVER source of truth.
