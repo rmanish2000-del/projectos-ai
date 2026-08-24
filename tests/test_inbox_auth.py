@@ -16,6 +16,7 @@ from projectos.infrastructure.inbox_auth import (
     ENFORCEMENT_PARAM,
     MODE_ENFORCING,
     MODE_TOLERANT,
+    PARAMETER_REGISTRY_ENV,
     AutoSignResult,
     KeyUnavailable,
     load_keyring,
@@ -388,6 +389,11 @@ class TestAutoSign:
         kwargs.setdefault("brake_path", tmp_path / "no-brake")
         kwargs.setdefault("log_path", tmp_path / "auto-sign.log")
         kwargs.setdefault("stamp", "2026-08-19 09:00")
+        # These existing cases predate the writer lease and are about the
+        # signer's own bounds, so they sweep with the lease fence off. The
+        # lease is exercised on its own terms in test_inbox_lease.py and
+        # end-to-end in test_signer_lease_integration.py.
+        kwargs.setdefault("require_lease", False)
         return auto_sign_once(inbox, KEY, **kwargs)
 
     def test_unsigned_assignments_are_signed(self, tmp_path: Path) -> None:
@@ -465,7 +471,11 @@ class TestAutoSign:
         audit = (drive / "AUTO-SIGN-LOG.md").read_text(encoding="utf-8")
         assert "auto-signed: 2026-08-19_0900_PROJECTOS_ONE.md" in audit
         status = (drive / "AUTO-SIGN-STATUS.md").read_text(encoding="utf-8")
-        assert "last swept 2026-08-19 09:00" in status
+        # The status gained fields in 2026-08-21 (last signed, last attempted,
+        # refusal class, unresolved count); the liveness stamp is still the
+        # thing this test is about.
+        assert "last swept:" in status
+        assert "2026-08-19 09:00" in status
         assert "Kill switch" in status
 
     def test_quiet_sweep_still_refreshes_liveness(self, tmp_path: Path) -> None:
@@ -476,9 +486,9 @@ class TestAutoSign:
         drive = tmp_path / "drive"
         drive.mkdir()
         self._sweep(inbox, tmp_path, drive_dir=drive, stamp="2026-08-19 09:30")
-        assert "last swept 2026-08-19 09:30" in (drive / "AUTO-SIGN-STATUS.md").read_text(
-            encoding="utf-8"
-        )
+        status = (drive / "AUTO-SIGN-STATUS.md").read_text(encoding="utf-8")
+        assert "last swept:" in status
+        assert "2026-08-19 09:30" in status
         assert not (drive / "AUTO-SIGN-LOG.md").exists()  # no noise when nothing happened
 
 
@@ -487,7 +497,7 @@ class TestCli:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         monkeypatch.setenv("PROJECTOS_INBOX_KEY", "k1:cli-drill-key")
-        monkeypatch.chdir(REPO_ROOT)  # so verify finds the shipped registry
+        monkeypatch.chdir(REPO_ROOT)  # incidental; the registry is found canonically
         target = tmp_path / "2026-08-17_2150_PROJECTOS_EXAMPLE.md"
         target.write_text(ASSIGNMENT, encoding="utf-8")
         assert main(["sign", str(target)]) == 0
@@ -502,13 +512,16 @@ class TestCli:
     ) -> None:
         # A synthetic tolerant registry, not the live one: the shipped value is
         # the founder's to flip, and this test is about the MODE's behaviour.
+        # Pointed at by the override rather than by chdir - since 2026-08-21
+        # the registry is resolved canonically, so which directory the process
+        # happens to be in no longer decides whether the fleet is enforcing.
         monkeypatch.setenv("PROJECTOS_INBOX_KEY", "k1:cli-drill-key")
-        (tmp_path / "docs").mkdir()
-        (tmp_path / "docs" / "parameter_registry.json").write_text(
+        registry = tmp_path / "parameter_registry.json"
+        registry.write_text(
             json.dumps({"parameters": {ENFORCEMENT_PARAM: {"value": "tolerant"}}}),
             encoding="utf-8",
         )
-        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv(PARAMETER_REGISTRY_ENV, str(registry))
         target = tmp_path / "unsigned.md"
         target.write_text(ASSIGNMENT, encoding="utf-8")
         assert main(["verify", str(target)]) == 0

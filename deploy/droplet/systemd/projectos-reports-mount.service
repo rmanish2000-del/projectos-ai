@@ -1,0 +1,15 @@
+[Unit]
+Description=Mount fleet AGENT-REPORTS from Drive
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=projectos
+Group=projectos
+ExecStart=/usr/bin/rclone mount fleet:AGENT-REPORTS /mnt/gdrive/AGENT-REPORTS --config /etc/projectos/rclone.conf --allow-non-empty --vfs-cache-mode writes
+ExecStop=/bin/fusermount3 -u /mnt/gdrive/AGENT-REPORTS
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

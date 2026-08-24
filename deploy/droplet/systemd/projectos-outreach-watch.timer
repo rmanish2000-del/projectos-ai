@@ -1,0 +1,12 @@
+[Unit]
+Description=Poll public outreach threads every 30 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+Persistent=true
+RandomizedDelaySec=60
+Unit=projectos-outreach-watch.service
+
+[Install]
+WantedBy=timers.target

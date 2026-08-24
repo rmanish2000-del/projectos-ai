@@ -1,0 +1,20 @@
+[Unit]
+Description=ProjectOS %i seat wake (one loop pass)
+After=network-online.target projectos-reports-mount.service projectos-inbox-mount.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=projectos
+Group=projectos
+WorkingDirectory=/opt/projectos/projectos-ai
+Environment=HOME=/home/projectos
+Environment=PATH=/opt/projectos/venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=SEAT=%i
+Environment=REPORTS_DIR=/mnt/gdrive/AGENT-REPORTS
+Environment=INBOX_DIR=/home/projectos/gdrive-inbox
+# Optional host default ENGINE=grok|codex|claude (file may be absent)
+EnvironmentFile=-/etc/projectos/engine.env
+ExecStart=/opt/projectos/projectos-ai/deploy/droplet/wake-linux.sh
+TimeoutStartSec=1800
+Nice=10

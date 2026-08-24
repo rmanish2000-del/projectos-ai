@@ -46,9 +46,20 @@ import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from projectos.domain.errors import InvariantViolation
+from projectos.infrastructure.fleet_clock import now_ist
+from projectos.infrastructure.inbox_guard import (
+    INCIDENTS_FILENAME,
+    Incident,
+    RefusalClass,
+    record_incidents,
+    unresolved,
+)
+from projectos.infrastructure.inbox_guard import classify as guard_classify
+from projectos.infrastructure.inbox_lease import emitted_under_active_lease
 
 #: The stamp line a legitimate assignment carries (conventionally last).
 #: The value is versioned from day one: ``AUTH: HMAC-SHA256 k1:<hex>``.
@@ -84,6 +95,21 @@ VERDICT_REFUSED = "REFUSED"
 class KeyUnavailable(InvariantViolation):
     """No signing key could be found. Nothing authenticates without it —
     refusing to verify is not the same as a file passing verification."""
+
+
+class RegistryUnavailable(InvariantViolation):
+    """The canonical enforcement registry could not be found.
+
+    This FAILS CLOSED, unlike a missing row inside a registry that exists.
+    The distinction is the whole point: a registry that is present and simply
+    does not declare the parameter is a fleet that has not switched on yet,
+    which is safely tolerant. A registry that cannot be found at all means we
+    do not know what the fleet decided - and on 2026-08-20 that state was
+    reachable from any seat, because the path was resolved relative to the
+    caller's working directory. Four seats verifying from their own repo roots
+    would have found no registry, silently defaulted to tolerant, and acted on
+    unsigned assignments while the fleet believed itself enforcing.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -455,6 +481,7 @@ class AutoSignResult:
     suspect: tuple[str, ...] = ()  # present-but-wrong stamps: incidents
     skipped_name: tuple[str, ...] = ()  # not assignment-shaped
     deferred: tuple[str, ...] = ()  # over the per-sweep cap
+    refused: tuple[str, ...] = ()  # guard or lease refusals: incidents, not noise
 
     def summary(self) -> str:
         parts = [f"signed={len(self.signed)}"]
@@ -471,11 +498,13 @@ def auto_sign_once(
     inbox_dir: Path,
     keyring: dict[str, bytes],
     *,
+    require_lease: bool,
     cap: int = AUTO_SIGN_CAP,
     brake_path: Path | None = None,
     log_path: Path | None = None,
     drive_dir: Path | None = None,
     stamp: str = "",
+    now: datetime | None = None,
 ) -> AutoSignResult:
     """One auto-sign sweep of the INBOX (assignment AUTO-SIGNER).
 
@@ -496,6 +525,14 @@ def auto_sign_once(
         return AutoSignResult(braked=True)
     if not inbox_dir.is_dir():
         raise InvariantViolation(f"auto-sign: {inbox_dir} is not a directory")
+    # Checked up front, not inside the candidate loop. Validating it lazily
+    # meant an empty INBOX swept "successfully" with the lease fence asked for
+    # and never applied - "enforce the lease but I cannot find it" must fail
+    # closed on every sweep, not only on sweeps that happen to have work.
+    if require_lease and drive_dir is None:
+        raise InvariantViolation(
+            "auto-sign: require_lease needs drive_dir to find the writer lease"
+        )
 
     candidates: list[Path] = []
     suspect: list[str] = []
@@ -514,16 +551,72 @@ def auto_sign_once(
 
     deferred = [p.name for p in candidates[cap:]]
     signed: list[str] = []
+    refused: list[str] = []
+    incidents: list[Incident] = []
+    moment = now if now is not None else now_ist()
+
     for path in candidates[:cap]:
-        path.write_text(sign_text(path.read_text(encoding="utf-8"), keyring), encoding="utf-8")
+        text = path.read_text(encoding="utf-8")
+
+        # Question two, after "is this assignment-shaped": is this the KIND of
+        # thing the signer may vouch for at all? Being genuine is not being
+        # authorised, so a file that binds the law or asks for a founder-only
+        # act is refused BEFORE the key ever touches it.
+        guard_verdict = guard_classify(text, path.name)
+        if not guard_verdict.may_sign:
+            refused.append(guard_verdict.line(path.name))
+            incidents.append(
+                Incident(
+                    at=moment.isoformat(timespec="seconds"),
+                    name=path.name,
+                    refusal=guard_verdict.refusal.value if guard_verdict.refusal else "REFUSED",
+                    reason=guard_verdict.reason,
+                )
+            )
+            continue
+
+        # Question three: was this emitted by whoever holds the INBOX writer
+        # lease? A second concurrent orchestrator cannot know the active lease
+        # id, so this is what makes "you are second" detectable at all.
+        if require_lease:
+            assert drive_dir is not None  # validated before the loop
+            ok, why = emitted_under_active_lease(text, drive_dir, now=moment)
+            if not ok:
+                refused.append(f"{RefusalClass.NO_LEASE_EVIDENCE.value} {path.name} - {why}")
+                incidents.append(
+                    Incident(
+                        at=moment.isoformat(timespec="seconds"),
+                        name=path.name,
+                        refusal=RefusalClass.NO_LEASE_EVIDENCE.value,
+                        reason=why,
+                    )
+                )
+                continue
+
+        path.write_text(sign_text(text, keyring), encoding="utf-8")
         signed.append(path.name)
+
+    # A tampered stamp was already an incident in prose; make it one on the
+    # record too, so it survives the next quiet sweep like every other.
+    incidents += [
+        Incident(
+            at=moment.isoformat(timespec="seconds"),
+            name=item.split(" :: ")[0],
+            refusal=RefusalClass.TAMPERED_STAMP.value,
+            reason=item,
+        )
+        for item in suspect
+    ]
 
     result = AutoSignResult(
         signed=tuple(signed),
         suspect=tuple(suspect),
         skipped_name=tuple(skipped),
         deferred=tuple(deferred),
+        refused=tuple(refused),
     )
+    if drive_dir is not None and incidents:
+        record_incidents(drive_dir, incidents)
     _write_auto_sign_trail(result, stamp, log_path or AUTO_SIGN_LOG, drive_dir)
     return result
 
@@ -555,13 +648,39 @@ def _write_auto_sign_trail(
         )
         with drive_log.open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(header + "\n".join(lines) + "\n")
-    # Liveness marker, rewritten every sweep: freshness IS the signal.
+    # Liveness marker, rewritten every sweep: freshness IS the signal. But
+    # rewriting it was ALSO how an unresolved incident disappeared - the next
+    # quiet sweep overwrote the only place a refusal was visible. So the status
+    # now reads the persistent incident record and carries it forward: the
+    # marker refreshes, and refreshing it no longer erases anything.
+    open_incidents = unresolved(drive_dir)
+    last_signed = result.signed[-1] if result.signed else "none this sweep"
+    attempted = list(result.signed) + [line.split(" - ")[0] for line in result.refused]
+    last_attempted = attempted[-1] if attempted else "none"
+    classes = sorted({line.split(" ", 1)[0] for line in result.refused})
+    header = "HEALTHY" if not open_incidents else f"ATTENTION - {len(open_incidents)} unresolved"
+
+    recovery = "nothing to clear" if not open_incidents else f"see {INCIDENTS_FILENAME}"
+    status = [
+        f"# AUTO-SIGN STATUS - {header}",
+        "",
+        f"last swept:      {stamp} IST",
+        f"last signed:     {last_signed}",
+        f"last attempted:  {last_attempted}",
+        f"refusal classes: {', '.join(classes) if classes else 'none this sweep'}",
+        f"unresolved:      {len(open_incidents)}",
+        f"recovery state:  {recovery}",
+        "",
+        f"sweep summary: {result.summary()}",
+        "",
+        "A stamp much older than a few minutes means the watcher is STOPPED.",
+        f"Kill switch: create {AUTO_SIGN_BRAKE}",
+    ]
+    if open_incidents:
+        status += ["", "## unresolved incidents (carried forward, not re-detected)"]
+        status += [f"- {i.at} `{i.name}` - {i.refusal}: {i.reason}" for i in open_incidents]
     (drive_dir / "AUTO-SIGN-STATUS.md").write_text(
-        f"auto-signer last swept {stamp} IST - {result.summary()}\n"
-        f"A stamp much older than a few minutes means the watcher is STOPPED.\n"
-        f"Kill switch: create {AUTO_SIGN_BRAKE}\n",
-        encoding="utf-8",
-        newline="\n",
+        "\n".join(status) + "\n", encoding="utf-8", newline="\n"
     )
 
 
@@ -598,7 +717,13 @@ def main(argv: list[str] | None = None) -> int:
         from projectos.infrastructure.fleet_clock import now_ist
 
         result = auto_sign_once(
-            target, keyring, drive_dir=target.parent, stamp=now_ist().strftime("%Y-%m-%d %H:%M")
+            target,
+            keyring,
+            # The fence follows the declared transition mode, not a hardcoded
+            # True: see LEASE_ENFORCEMENT_PARAM for why it ships tolerant.
+            require_lease=resolve_lease_enforcement() == MODE_ENFORCING,
+            drive_dir=target.parent,
+            stamp=now_ist().strftime("%Y-%m-%d %H:%M"),
         )
         if result.braked:
             print("auto-sign: BRAKE FILE PRESENT - did nothing")
@@ -608,6 +733,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  signed: {name}")
         for item in result.suspect:
             print(f"  TAMPERED, left refused: {item}")
+        for item in result.refused:
+            print(f"  REFUSED (incident recorded): {item}")
         # A tampered stamp is an incident: exit nonzero so a scheduled run
         # surfaces it rather than logging into the void.
         return 1 if result.suspect else 0
@@ -619,16 +746,98 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     verdict = verify_file(target, keyring)
-    mode = resolve_enforcement(Path(PARAMETER_REGISTRY_FILE))
+    try:
+        mode = resolve_enforcement_canonical()
+    except RegistryUnavailable as exc:
+        # Fail closed and say so. Silence here is what let four seats run
+        # tolerant while the fleet believed itself enforcing.
+        print(verdict.report_line())
+        print(f"REGISTRY UNAVAILABLE: {exc} -> REFUSE")
+        return 2
     act = should_act(verdict, mode)
     print(verdict.report_line())
     print(f"mode={mode} -> {'ACT' if act else 'REFUSE'}")
     return 0 if act else 2
 
 
-#: The registry the CLI consults for the transition switch, relative to the
-#: working directory (the seat's repo root).
+#: The registry the CLI consults for the transition switch. Kept as a
+#: repo-relative fragment only for joining onto the canonical root below -
+#: it is never opened relative to the caller's working directory.
 PARAMETER_REGISTRY_FILE = "docs/parameter_registry.json"
+
+#: Override for a legitimately relocated registry (packaged installs, a test
+#: fixture). It must still POINT AT A FILE THAT EXISTS: an override naming a
+#: missing file fails closed exactly like a missing canonical one, so this can
+#: never become the quiet route back to tolerant.
+PARAMETER_REGISTRY_ENV = "PROJECTOS_PARAMETER_REGISTRY"
+
+
+def canonical_registry_path() -> Path:
+    """Where the enforcement registry lives, regardless of the caller's cwd.
+
+    Derived from THIS MODULE's location, not from the process working
+    directory, so a seat verifying from its own repo root reads the same
+    registry as a seat verifying from ProjectOS. That is the entire fix: the
+    answer to "is the fleet enforcing" must not depend on which folder the
+    question was asked from.
+    """
+    override = os.environ.get(PARAMETER_REGISTRY_ENV)
+    if override:
+        return Path(override)
+    # inbox_auth.py -> infrastructure -> projectos -> src -> <repo root>
+    return Path(__file__).resolve().parents[3] / PARAMETER_REGISTRY_FILE
+
+
+#: Registry key for the writer-lease transition switch. Same shape, and the
+#: same reason, as INBOX-AUTH-ENFORCEMENT: a fence that is correct but not yet
+#: fed will refuse everything. No orchestrator emits a LEASE line today, so
+#: turning this on before they do would stop the fleet taking work at all -
+#: which is automation disablement wearing a security badge. It ships
+#: TOLERANT; Chat flips it once the issuers stamp their output.
+LEASE_ENFORCEMENT_PARAM = "INBOX-LEASE-ENFORCEMENT"
+
+
+def resolve_lease_enforcement() -> str:
+    """Tolerant or enforcing for the writer lease. Founder/Chat-flipped only.
+
+    Reads the same canonical registry as the stamp switch, so it inherits the
+    fail-closed behaviour when the registry itself cannot be found.
+    """
+    path = canonical_registry_path()
+    if not path.exists():
+        raise RegistryUnavailable(
+            f"enforcement registry not found at {path} - refusing to guess "
+            "whether the writer lease is enforced"
+        )
+    try:
+        declared = json.loads(path.read_text(encoding="utf-8")).get("parameters", {})
+    except json.JSONDecodeError:
+        return MODE_TOLERANT
+    row = declared.get(LEASE_ENFORCEMENT_PARAM)
+    if row is None:
+        return MODE_TOLERANT
+    value = str(row.get("value", "")).strip().lower()
+    if value not in (MODE_TOLERANT, MODE_ENFORCING):
+        raise KeyUnavailable(
+            f"{LEASE_ENFORCEMENT_PARAM} declares {row.get('value')!r}, which is "
+            f"neither {MODE_TOLERANT!r} nor {MODE_ENFORCING!r}"
+        )
+    return value
+
+
+def resolve_enforcement_canonical() -> str:
+    """The enforcement mode, resolved canonically and failing closed.
+
+    Raises RegistryUnavailable when the registry cannot be found at all.
+    Callers must treat that as REFUSE, never as tolerant.
+    """
+    path = canonical_registry_path()
+    if not path.exists():
+        raise RegistryUnavailable(
+            f"enforcement registry not found at {path} - refusing to guess "
+            "whether the fleet is enforcing"
+        )
+    return resolve_enforcement(path)
 
 if __name__ == "__main__":  # pragma: no cover - exercised via tests calling main()
     raise SystemExit(main())

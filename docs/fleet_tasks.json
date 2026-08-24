@@ -1,0 +1,116 @@
+﻿{
+    "tasks":  [
+                  {
+                      "name":  "AUTO-SIGN",
+                      "execute":  "wscript.exe",
+                      "arguments":  "//B //Nologo C:\\ProjectOS-AI\\scripts\\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File C:\\ProjectOS-AI\\scripts\\auto-sign.ps1",
+                      "user":  "rmani",
+                      "logon":  "Interactive",
+                      "runlevel":  "Limited",
+                      "start":  "2026-08-20T00:00:00",
+                      "interval":  "PT2M",
+                      "duration":  "P1D"
+                  },
+                  {
+                      "name":  "WAKE-AIW",
+                      "execute":  "wscript.exe",
+                      "arguments":  "//B //Nologo C:\\ProjectOS-AI\\scripts\\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File C:\\AI-Workspace\\scripts\\wake.ps1 -RepoRoot C:\\AI-Workspace -Seat AIW",
+                      "user":  "rmani",
+                      "logon":  "Interactive",
+                      "runlevel":  "Limited",
+                      "start":  "2026-08-20T09:03:00",
+                      "interval":  "PT20M",
+                      "duration":  "PT10H"
+                  },
+                  {
+                      "name":  "WAKE-CHAT-RESTOCK",
+                      "execute":  "wscript.exe",
+                      "arguments":  "//B //Nologo C:\\ProjectOS-AI\\scripts\\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File C:\\ProjectOS-AI\\scripts\\wake.ps1 -Seat CHAT-AUTO-RESTOCK -PromptFile wake-prompt-chat.md",
+                      "user":  "rmani",
+                      "logon":  "Interactive",
+                      "runlevel":  "Limited",
+                      "start":  "2026-08-20T09:15:00",
+                      "interval":  "PT20M",
+                      "duration":  "PT10H"
+                  },
+                  {
+                      "name":  "WAKE-EDUOS",
+                      "execute":  "wscript.exe",
+                      "arguments":  "//B //Nologo C:\\ProjectOS-AI\\scripts\\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\EduOS\\scripts\\wake.ps1\" -RepoRoot \"C:\\EduOS\" -Seat EDUOS",
+                      "user":  "rmani",
+                      "logon":  "Interactive",
+                      "runlevel":  "Limited",
+                      "start":  "2026-08-20T09:16:00+05:30",
+                      "interval":  "PT20M",
+                      "duration":  "PT10H"
+                  },
+                  {
+                      "name":  "WAKE-LEOS",
+                      "execute":  "wscript.exe",
+                      "arguments":  "//B //Nologo C:\\ProjectOS-AI\\scripts\\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\Urjadata Case – Dobhi Deori – Sagar (M.P.) – 470226\\LEOS\\scripts\\wake.ps1\" -RepoRoot \"C:\\Urjadata Case – Dobhi Deori – Sagar (M.P.) – 470226\\LEOS\" -Seat LEOS",
+                      "user":  "rmani",
+                      "logon":  "Interactive",
+                      "runlevel":  "Limited",
+                      "start":  "2026-08-20T09:18:00+05:30",
+                      "interval":  "PT20M",
+                      "duration":  "PT10H"
+                  },
+                  {
+                      "name":  "WAKE-PROJECTOS",
+                      "execute":  "wscript.exe",
+                      "arguments":  "//B //Nologo C:\\ProjectOS-AI\\scripts\\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File C:\\ProjectOS-AI\\scripts\\wake.ps1",
+                      "user":  "rmani",
+                      "logon":  "Interactive",
+                      "runlevel":  "Limited",
+                      "start":  "2026-08-20T09:09:00",
+                      "interval":  "PT20M",
+                      "duration":  "PT10H"
+                  },
+                  {
+                      "name":  "WAKE-TRADEOS",
+                      "execute":  "wscript.exe",
+                      "arguments":  "//B //Nologo C:\\ProjectOS-AI\\scripts\\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File C:\\dev\\TradeOS-AI\\scripts\\wake.ps1 -RepoRoot C:\\dev\\TradeOS-AI -Seat TRADEOS",
+                      "user":  "rmani",
+                      "logon":  "Interactive",
+                      "runlevel":  "Limited",
+                      "start":  "2026-08-20T09:00:00",
+                      "interval":  "PT20M",
+                      "duration":  "PT10H"
+                  },
+                  {
+                      "name":  "WAKE-URJAOPS",
+                      "execute":  "wscript.exe",
+                      "arguments":  "//B //Nologo C:\\ProjectOS-AI\\scripts\\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\UrjaOps\\scripts\\wake.ps1\" -RepoRoot \"C:\\UrjaOps\" -Seat URJAOPS",
+                      "user":  "rmani",
+                      "logon":  "Interactive",
+                      "runlevel":  "Limited",
+                      "start":  "2026-08-20T09:17:00+05:30",
+                      "interval":  "PT20M",
+                      "duration":  "PT10H"
+                  },
+                  {
+                      "name":  "WAKE-WARRANT",
+                      "execute":  "wscript.exe",
+                      "arguments":  "//B //Nologo C:\\ProjectOS-AI\\scripts\\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Push-to-Prod-2026\\warrant\\scripts\\wake.ps1 -RepoRoot C:\\Push-to-Prod-2026\\warrant -Seat WARRANT",
+                      "user":  "rmani",
+                      "logon":  "Interactive",
+                      "runlevel":  "Limited",
+                      "start":  "2026-08-20T09:12:00",
+                      "interval":  "PT20M",
+                      "duration":  "PT10H"
+                  },
+                  {
+                      "name":  "WAKE-WEB",
+                      "execute":  "wscript.exe",
+                      "arguments":  "//B //Nologo C:\\ProjectOS-AI\\scripts\\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Push-to-Prod-2026\\aiworkspace-hq-web\\scripts\\wake.ps1 -RepoRoot C:\\Push-to-Prod-2026\\aiworkspace-hq-web -Seat WEB",
+                      "user":  "rmani",
+                      "logon":  "Interactive",
+                      "runlevel":  "Limited",
+                      "start":  "2026-08-20T09:06:00",
+                      "interval":  "PT20M",
+                      "duration":  "PT10H"
+                  }
+              ],
+    "generated":  "2026-08-21",
+    "note":  "reviewed FLEET task definitions"
+}
