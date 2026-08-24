@@ -20,6 +20,7 @@ import hashlib
 import os
 import shutil
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -85,6 +86,25 @@ def _path_without_engines() -> dict[str, str]:
     env["PATH"] = str(Path(os.environ.get("SYSTEMROOT", "C:/Windows")) / "System32")
     env["USERPROFILE"] = os.environ.get("USERPROFILE", "")
     return env
+
+
+@pytest.fixture(autouse=True)
+def _no_residue(tmp_path: Path) -> Iterator[None]:
+    """Remove this test's seat state after every test.
+
+    Each test runs the real wrapper, which writes a log, a backoff file and a
+    staging directory under ~/.projectos. Left behind they accumulate, and a
+    stale backoff for a name a later test reuses would make that test assert
+    against a skip. A test that litters the state directory it is testing is
+    a test that will eventually fail for its own reasons.
+    """
+    yield
+    seat = _fresh_seat(tmp_path)
+    for candidate in (seat, seat + "AIWLIKE", seat + "WARRANTLIKE",
+                      seat + "PROJECTOSLIKE", seat + "AUTH"):
+        for f in _state_files(candidate):
+            f.unlink(missing_ok=True)
+        shutil.rmtree(Path.home() / ".projectos" / "stage" / candidate, ignore_errors=True)
 
 
 def _failure_text(tmp_path: Path) -> str:
