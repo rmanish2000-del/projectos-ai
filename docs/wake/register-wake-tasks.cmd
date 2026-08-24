@@ -10,6 +10,14 @@ REM  day 09:00-19:00, staggered 3 minutes apart so two seats never touch Drive
 REM  on the same minute (PROJECTOS-P0-WAKE-CADENCE). The old twice-daily
 REM  cadence left assignments sitting untouched for hours.
 REM
+REM  CHAT-AUTO-RESTOCK is budgeted SEPARATELY from that ceiling: every 20
+REM  minutes 09:00-19:00 IST = 31 passes/day, but a pass is verify/restock
+REM  or a heartbeat - no build work, no test gates, typically far shorter
+REM  than a seat wake. Worst day: 31 short sessions + 10 seat sessions.
+REM  The restocker is the deterministic Python engine invoked by wake.ps1;
+REM  it starts no model session. -PromptFile is retained for command-line
+REM  compatibility but is ignored on this seat. It holds NO founder authority.
+REM
 REM  ONE TASK PER SEAT, NOT TWO. The previous -AM/-PM pairs made sense only
 REM  while each fired once. With a 20-minute repeat a surviving pair would
 REM  double every seat's session count, so the obsolete names are deleted
@@ -77,4 +85,5 @@ REM --- the two-minute signer, also window-less ---
 schtasks /create /tn "FLEET\AUTO-SIGN" /tr "wscript.exe //B //Nologo C:\ProjectOS-AI\scripts\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProjectOS-AI\scripts\auto-sign.ps1" /sc daily /st 00:00 /ri 2 /du 24:00 /f
 
 echo Done. Verify with: schtasks /query /tn "FLEET\" /fo LIST
+
 echo Every action should read wscript.exe, and every WAKE task /ri 20.

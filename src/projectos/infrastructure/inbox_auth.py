@@ -355,15 +355,22 @@ def _ask_console(prompt: str, timeout_seconds: int = 120) -> str:
             return input()
         except (EOFError, KeyboardInterrupt):
             return ""
+    kbhit = getattr(msvcrt, "kbhit", None)
+    getwche = getattr(msvcrt, "getwche", None)
+    if not callable(kbhit) or not callable(getwche):
+        try:
+            return input()
+        except (EOFError, KeyboardInterrupt):
+            return ""
     import time as _time
 
     deadline = _time.monotonic() + timeout_seconds
     typed: list[str] = []
     while _time.monotonic() < deadline:
-        if not msvcrt.kbhit():
+        if not kbhit():
             _time.sleep(0.05)
             continue
-        char = msvcrt.getwche()
+        char = getwche()
         if char in ("\r", "\n"):
             print()
             return "".join(typed)

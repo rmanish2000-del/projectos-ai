@@ -53,6 +53,10 @@ function Write-WakeFailure([string]$why) {
     Write-LocalLog "WAKE-FAILURE: $why"
 }
 
+# CHAT-AUTO-RESTOCK is a deterministic program, not an agent session.
+# This branch is deliberately before prompt/CLI discovery: untrusted report
+# text can never enter the same context as instructions, and the restocker has
+# no model tools with which to merge, ratify, edit a repo, or self-issue.
 function Release-SeatLock {
     if (-not $script:HoldsLock) { return }
     if (Test-Path $LockFile) {
