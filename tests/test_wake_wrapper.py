@@ -20,6 +20,7 @@ import hashlib
 import os
 import shutil
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -85,6 +86,25 @@ def _path_without_engines() -> dict[str, str]:
     env["PATH"] = str(Path(os.environ.get("SYSTEMROOT", "C:/Windows")) / "System32")
     env["USERPROFILE"] = os.environ.get("USERPROFILE", "")
     return env
+
+
+@pytest.fixture(autouse=True)
+def _no_residue(tmp_path: Path) -> Iterator[None]:
+    """Remove this test's seat state after every test.
+
+    Each test runs the real wrapper, which writes a log, a backoff file and a
+    staging directory under ~/.projectos. Left behind they accumulate, and a
+    stale backoff for a name a later test reuses would make that test assert
+    against a skip. A test that litters the state directory it is testing is
+    a test that will eventually fail for its own reasons.
+    """
+    yield
+    seat = _fresh_seat(tmp_path)
+    for candidate in (seat, seat + "AIWLIKE", seat + "WARRANTLIKE",
+                      seat + "PROJECTOSLIKE", seat + "AUTH"):
+        for f in _state_files(candidate):
+            f.unlink(missing_ok=True)
+        shutil.rmtree(Path.home() / ".projectos" / "stage" / candidate, ignore_errors=True)
 
 
 def _failure_text(tmp_path: Path) -> str:
@@ -204,3 +224,71 @@ def test_orphan_cleanup_is_scoped_to_this_wakes_descendants() -> None:
 def test_orphan_cleanup_no_longer_scans_every_process_on_the_machine() -> None:
     source = WAKE.read_text(encoding="utf-8-sig")
     assert "Get-Process python*, py*, pytest*" not in source
+
+
+# --- per-seat output routing ------------------------------------------------
+#
+# These use SYNTHETIC seat names. An earlier version parametrised over the
+# real AIW/WARRANT/PROJECTOS names and therefore deleted and recreated live
+# seats' staging directories and appended to their logs. A test that mutates
+# production state to prove a point about production state is not a test.
+# The property is name-independent: seat X must be told stage\X\OUT. The
+# named AIW/WARRANT proof is the live wake recorded in the report.
+
+
+def _staged_prompt_for(tmp_path: Path, seat: str) -> str:
+    """Run a wake far enough to build the staged prompt, then read it.
+
+    The wake fails at the engine (none on PATH), which is fine: the staged
+    prompt is written before the engine is invoked and is the artifact under
+    test.
+    """
+    (tmp_path / "wake-prompt.md").write_text(
+        "# seat prompt" + chr(10)
+        + "Write outputs to %USERPROFILE%" + (chr(92) * 1) + ".projectos"
+        + (chr(92) * 1) + "stage" + (chr(92) * 1) + "PROJECTOS" + (chr(92) * 1) + "OUT" + chr(10),
+        encoding="utf-8",
+    )
+    _run_wake(tmp_path, "-Engine", "grok", seat=seat, env=_path_without_engines())
+    staged = Path.home() / ".projectos" / "stage" / seat / "WAKE-PROMPT.md"
+    text = staged.read_text(encoding="utf-8", errors="replace") if staged.exists() else ""
+    shutil.rmtree(Path.home() / ".projectos" / "stage" / seat, ignore_errors=True)
+    for f in _state_files(seat):
+        f.unlink(missing_ok=True)
+    return text
+
+
+@pytest.mark.parametrize("suffix", ["AIWLIKE", "WARRANTLIKE", "PROJECTOSLIKE"])
+def test_each_seat_is_told_its_own_out_directory(tmp_path: Path, suffix: str) -> None:
+    seat = _fresh_seat(tmp_path) + suffix
+    text = _staged_prompt_for(tmp_path, seat)
+    assert text, "no staged prompt was built"
+    assert f"stage\{seat}\OUT" in text
+
+
+@pytest.mark.parametrize("suffix", ["AIWLIKE", "WARRANTLIKE"])
+def test_a_seat_is_never_pointed_at_another_seats_out(
+    tmp_path: Path, suffix: str
+) -> None:
+    # The exact 2026-08-24 defect: the on-disk prompt (which this fixture
+    # deliberately still gets wrong) said stage\PROJECTOS\OUT for every seat.
+    seat = _fresh_seat(tmp_path) + suffix
+    text = _staged_prompt_for(tmp_path, seat)
+    header = text.split("---", 1)[0]
+    assert "stage\PROJECTOS\OUT" not in header
+    assert f"stage\{seat}\OUT" in header
+
+
+def test_the_injected_header_declares_itself_authoritative(tmp_path: Path) -> None:
+    # The on-disk prompt may still be wrong, so the header has to say which
+    # wins rather than leaving the seat to guess.
+    text = _staged_prompt_for(tmp_path, _fresh_seat(tmp_path) + "AUTH")
+    assert "this header wins" in text.lower()
+
+
+def test_the_wrapper_builds_the_prompt_rather_than_trusting_disk() -> None:
+    # STRUCTURAL. The engine must be fed the staged prompt, never the raw repo
+    # file, or the injected header is decorative.
+    source = WAKE.read_text(encoding="utf-8-sig")
+    assert "$StagedPrompt = Join-Path $StageDir" in source
+    assert "Get-Content $prompt -Raw | & codex exec -" not in source

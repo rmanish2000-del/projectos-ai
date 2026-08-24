@@ -220,14 +220,6 @@ if (-not (Test-Path $prompt)) {
         Exit-Wake 2
     }
 }
-$cliName = $Engine
-$cli = Get-Command $cliName -ErrorAction SilentlyContinue
-if ($null -eq $cli) {
-    Write-WakeFailure "$cliName CLI not on PATH (Engine=$Engine)"
-    Record-FailureClass "missing-cli-$cliName"
-    Exit-Wake 2
-}
-
 # --- DRIVE STAGING ---------------------------------------------------------
 # Proven on 2026-08-24 by three controlled runs against codex-cli 0.149.1:
 #   --add-dir "G:\My Drive\AGENT-REPORTS"  -> sandbox helper never starts
@@ -295,6 +287,54 @@ function Publish-Stage {
 
 Initialize-Stage
 
+# --- THE PROMPT IS BUILT PER WAKE, NOT TRUSTED FROM DISK -------------------
+# On 2026-08-24 every seat's on-disk prompt named PROJECTOS's stage directory,
+# because the block was injected from an already-substituted copy and the seat
+# token was never replaced. AIW and WARRANT therefore wrote their heartbeats
+# into stage\PROJECTOS\OUT, the wrapper found its own OUT empty, and failed
+# the wake for producing no evidence of work. The static text was wrong and
+# nothing could tell.
+#
+# So the wrapper now states the truth itself, at wake time, from the same
+# variables it uses to stage and publish. There is no second place for the
+# path to be written down and therefore no second place for it to be wrong.
+$StagedPrompt = Join-Path $StageDir "WAKE-PROMPT.md"
+$promptHeader = @(
+    "# THIS WAKE: you are the $Seat seat",
+    "",
+    "Everything you read and write for this wake lives under:",
+    "",
+    "    $StageDir",
+    "",
+    "- INBOX to read:        $StageInbox",
+    "- the law to read:      $StageDir\SEAT-BOOT.md",
+    "- existing filenames:   $StageDir\REPORTS-INDEX.txt",
+    "- WRITE EVERY OUTPUT:   $StageOut",
+    "- to move to DONE:      append the filename to $DoneManifest",
+    "",
+    "**If anything below names a different stage path, this header wins.** It",
+    "was written by the wrapper for this wake and names YOUR seat's directory.",
+    "A file you write anywhere else is invisible: the wrapper publishes only",
+    "what is in the OUT directory named above.",
+    "",
+    "---",
+    ""
+)
+Set-Content -Path $StagedPrompt -Value ($promptHeader + (Get-Content $prompt)) -Encoding utf8
+Write-LocalLog "STAGE-PROMPT: built for seat $Seat naming $StageOut"
+
+# Staged BEFORE the engine-availability check on purpose: the staged
+# prompt records what this wake intended to do, so a wake that dies on a
+# missing CLI still leaves that evidence behind instead of nothing.
+$cliName = $Engine
+$cli = Get-Command $cliName -ErrorAction SilentlyContinue
+if ($null -eq $cli) {
+    Write-WakeFailure "$cliName CLI not on PATH (Engine=$Engine)"
+    Record-FailureClass "missing-cli-$cliName"
+    Exit-Wake 2
+}
+
+
 $wakeStart = Get-Date
 $reportsBefore = @(Get-ChildItem $ReportsDir -File -ErrorAction SilentlyContinue |
     Select-Object -ExpandProperty Name)
@@ -311,15 +351,15 @@ if (Test-Path $TranscriptFile) { Remove-Item $TranscriptFile -Force -ErrorAction
 $enginePreference = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 if ($Engine -eq "codex") {
-    Get-Content $prompt -Raw | & codex exec - --dangerously-bypass-approvals-and-sandbox --add-dir $StageDir --skip-git-repo-check --color never 1>$TranscriptFile 2>$StderrFile
+    Get-Content $StagedPrompt -Raw | & codex exec - --dangerously-bypass-approvals-and-sandbox --add-dir $StageDir --skip-git-repo-check --color never 1>$TranscriptFile 2>$StderrFile
 } elseif ($Engine -eq "grok") {
     # Windows: do not pass --cwd as a separate argv (grok 1.0.5 treats path as unexpected).
     # Already Set-Location $RepoRoot above. Pass -p via argument array for safe quoting.
-    $promptText = Get-Content $prompt -Raw
+    $promptText = Get-Content $StagedPrompt -Raw
     $grokArgs = @('--no-auto-update', '--always-approve', '-p', $promptText)
     & grok @grokArgs 1>$TranscriptFile 2>$StderrFile
 } else {
-    Get-Content $prompt -Raw | & claude -p 1>$TranscriptFile 2>$StderrFile
+    Get-Content $StagedPrompt -Raw | & claude -p 1>$TranscriptFile 2>$StderrFile
 }
 $engineExit = $LASTEXITCODE
 $ErrorActionPreference = $enginePreference
