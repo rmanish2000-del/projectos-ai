@@ -54,6 +54,12 @@ LAW_VERSION_RE = re.compile(r"LAW-VERSION[:\s]+\**\s*(\d+)", re.IGNORECASE)
 #: suffix, since that only appends to the stem.
 LAW_NAME = "SEAT-BOOT"
 
+#: The ONLY filenames that may be the law: `SEAT-BOOT`, optionally wearing the
+#: `(1)`, `(2)` suffix Drive appends to a duplicate upload. Anchored at both
+#: ends, so `RPT-...SEAT-BOOT`, `SEAT-BOOT-v8` and a report merely mentioning
+#: the name are all excluded by construction rather than by a prefix list.
+LAW_FILENAME_RE = re.compile(r"^SEAT-BOOT(?: \(\d+\))?$", re.IGNORECASE)
+
 #: Only the head of a file is scanned. The version belongs at the top; a
 #: mention of "LAW-VERSION 7" three hundred lines into a changelog is a
 #: reference, not a declaration.
@@ -90,18 +96,16 @@ def _declared_version(path: Path) -> int | None:
     except OSError:
         return None
 
-    # Self-identification, tightened 2026-08-24. Naming SEAT-BOOT anywhere in
-    # the opening lines is not enough: every report states which law it booted
-    # from ("SEAT-BOOT LAW-VERSION 9"), and that is a citation, not a claim to
-    # BE the law. A law file either carries the name in its filename or opens
-    # with it as its first heading.
-    first_heading = next(
-        (line for line in head.splitlines() if line.lstrip().startswith("#")), ""
-    )
-    identifies_as_law = (
-        LAW_NAME in path.name.upper() or LAW_NAME in first_heading.upper()
-    )
-    if not identifies_as_law:
+    # Self-identification, made permanent 2026-08-24 (MAKE-LAPTOP-WAKE-WORK
+    # item 5). Only the FILENAME may declare a file to be the law, and only
+    # exactly: `SEAT-BOOT.md`, or the same name wearing Drive's duplicate
+    # suffix `SEAT-BOOT (1).md`. Content is never enough. Every report in this
+    # fleet opens by citing the law it booted from - "SEAT-BOOT ...
+    # LAW-VERSION 9" - and a citation is not a declaration. Reading content
+    # made eleven archived reports into rival claimants and deadlocked the
+    # resolver; the stopgap was renaming them, and this is the fix that means
+    # they never have to be renamed again.
+    if not LAW_FILENAME_RE.match(path.stem):
         return None
 
     match = LAW_VERSION_RE.search(head)
@@ -134,15 +138,19 @@ def resolve_law(reports_dir: Path) -> LawFile:
             "the fleet has no law it can read"
         )
 
-    top = found[0].version
-    tied = [f for f in found if f.version == top]
-    if len(tied) > 1:
-        names = ", ".join(sorted(f.path.name for f in tied))
+    # ANY second live law-named file is ambiguous, whatever version it claims.
+    # This is stricter than picking the highest, and deliberately so: the way
+    # this actually goes wrong is a Drive duplicate upload landing as
+    # `SEAT-BOOT (1).md` beside `SEAT-BOOT.md`, and there is no honest way to
+    # tell which of those two is current from the outside. Guessing the higher
+    # version would be a coin toss dressed as a rule.
+    if len(found) > 1:
+        names = ", ".join(sorted(f.path.name for f in found))
         raise LawUnavailable(
-            f"LAW-VERSION {top} is declared by more than one live file "
-            f"({names}) - refusing to guess which is the law"
+            f"more than one live law file ({names}) - refusing to guess which "
+            "is the law; retire the stale one to a SUPERSEDED- name"
         )
-    return tied[0]
+    return found[0]
 
 
 def main(argv: list[str] | None = None) -> int:
