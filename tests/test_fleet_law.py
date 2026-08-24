@@ -108,12 +108,12 @@ def test_retired_prefixes_are_recognised() -> None:
     assert not is_retired("SEAT-BOOT (1).md")
 
 
-def test_candidates_excludes_retired_and_orders_by_version(tmp_path: Path) -> None:
+def test_candidates_holds_only_law_named_files(tmp_path: Path) -> None:
     _law(tmp_path, "SEAT-BOOT.md", 9)
-    _law(tmp_path, "older-law.md", 5)
-    _law(tmp_path, "SUPERSEDED-x.md", 8)
+    _law(tmp_path, "older-law.md", 5)  # not law-named: a copy, not the law
+    _law(tmp_path, "SUPERSEDED-SEAT-BOOT.md", 8)  # retired
     found = candidates(tmp_path)
-    assert [f.version for f in found] == [9, 5]
+    assert [f.path.name for f in found] == ["SEAT-BOOT.md"]
 
 
 def test_summary_names_version_and_file(tmp_path: Path) -> None:
@@ -133,11 +133,18 @@ def test_a_dashboard_reporting_the_version_is_not_the_law(tmp_path: Path) -> Non
     assert law.path.name == "SEAT-BOOT.md"
 
 
-def test_a_law_named_only_in_its_heading_still_counts(tmp_path: Path) -> None:
+def test_a_heading_alone_no_longer_makes_a_file_the_law(tmp_path: Path) -> None:
+    # Ratified 2026-08-24: only the FILENAME may declare a file to be the
+    # law. Content was enough until eleven archived reports, each opening by
+    # citing "SEAT-BOOT ... LAW-VERSION 9", became rival claimants and
+    # deadlocked the resolver. A copy of the law under another name is a
+    # copy, not the law.
     (tmp_path / "fleet-law-copy.md").write_text(
-        "# SEAT-BOOT - the fleet law\n**LAW-VERSION: 4**\n", encoding="utf-8"
+        "# SEAT-BOOT - the fleet law" + chr(10) + "**LAW-VERSION: 4**" + chr(10),
+        encoding="utf-8",
     )
-    assert resolve_law(tmp_path).version == 4
+    with pytest.raises(LawUnavailable):
+        resolve_law(tmp_path)
 
 
 def test_a_report_citing_the_law_is_not_a_rival_law_file(tmp_path: Path) -> None:
@@ -178,3 +185,39 @@ def test_the_real_fleet_folder_resolves_to_exactly_one_law() -> None:
     if not live.exists():  # pragma: no cover - Drive not mounted in CI
         pytest.skip("fleet Drive folder not mounted")
     assert resolve_law(live).path.name == "SEAT-BOOT.md"
+
+
+def test_drives_duplicate_suffix_is_still_a_law_filename(tmp_path: Path) -> None:
+    # The 2026-08-20 outage: Drive stored the new law as `SEAT-BOOT (1).md`.
+    # The filename rule has to admit that suffix or the fix reintroduces the
+    # very fault it was written for.
+    _law(tmp_path, "SEAT-BOOT (1).md", 9)
+    assert resolve_law(tmp_path).path.name == "SEAT-BOOT (1).md"
+
+
+def test_a_report_citing_the_law_never_counts_however_it_is_worded(
+    tmp_path: Path,
+) -> None:
+    for name, body in [
+        ("RPT-2026-08-21_PROJECTOS_X.md", "DONE: SEAT-BOOT LAW-VERSION 9 read.\n"),
+        ("2026-08-22_PROJECTOS_FLEET.md", "# SEAT-BOOT\n**LAW-VERSION: 9**\n"),
+        ("AIW-CONFIRM.md", "We confirm SEAT-BOOT.\nLAW-VERSION: 9\n"),
+    ]:
+        (tmp_path / name).write_text(body, encoding="utf-8")
+    _law(tmp_path, "SEAT-BOOT.md", 9)
+    assert resolve_law(tmp_path).path.name == "SEAT-BOOT.md"
+
+
+def test_two_genuine_declarations_still_refuse(tmp_path: Path) -> None:
+    # Required by MAKE-LAPTOP-WAKE-WORK item 5. Two real law files is the
+    # dangerous state, and there is no honest way to pick between them.
+    _law(tmp_path, "SEAT-BOOT.md", 9)
+    _law(tmp_path, "SEAT-BOOT (1).md", 10)
+    with pytest.raises(LawUnavailable, match="more than one live law file"):
+        resolve_law(tmp_path)
+
+
+def test_a_versioned_law_name_is_not_the_law(tmp_path: Path) -> None:
+    _law(tmp_path, "SEAT-BOOT-v10.md", 10)
+    _law(tmp_path, "SEAT-BOOT.md", 9)
+    assert resolve_law(tmp_path).version == 9

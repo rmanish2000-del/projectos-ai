@@ -1,4 +1,4 @@
-# Headless seat wake wrapper (REMOVE-THE-GO). One wake = one loop pass.
+﻿# Headless seat wake wrapper (REMOVE-THE-GO). One wake = one loop pass.
 # Launched by Task Scheduler; runnable by hand for a dry-run. The prompt is
 # wake-prompt.md in the repo root - versioned, never an inline string here.
 #
@@ -29,6 +29,12 @@ $LocalLog = Join-Path $StateDir "wake-$Seat.log"
 $UsageLog = Join-Path $StateDir "wake-usage.log"
 $BackoffFile = Join-Path $StateDir "wake-$Seat.backoff.json"
 $StderrFile = Join-Path $StateDir "wake-$Seat.stderr"
+# The engine writes its DIAGNOSIS to stdout, not stderr. On 2026-08-24 a
+# WARRANT wake printed "STATUS: FAILED - law resolver could not start" on
+# stdout, wrote nothing to stderr at all, and the wrapper recorded
+# "OK: wake completed". Capturing only stderr is why two days of
+# diagnosis had nothing to read.
+$TranscriptFile = Join-Path $StateDir "wake-$Seat.transcript"
 $script:HoldsLock = $false
 
 $BackoffBaseMinutes = 20
@@ -195,11 +201,24 @@ if ($Seat -eq "CHAT-AUTO-RESTOCK") {
     Exit-Wake 0
 }
 
+# A seat's boot prompt must not be a BRANCH ARTIFACT. On 2026-08-24 WEB had
+# no prompt at all: it had been committed to feature/callback-redirect-only,
+# the seat moved to feature/payer-gets-something, and the file vanished from
+# the working tree. The seat then failed every wake for a reason that had
+# nothing to do with its work. So the repo copy is preferred, and a
+# branch-independent copy under the state directory is the fallback.
 $prompt = Join-Path $RepoRoot $PromptFile
 if (-not (Test-Path $prompt)) {
-    Write-WakeFailure "$PromptFile missing at $prompt (RepoRoot=$RepoRoot). Seat-specific tasks must pass -RepoRoot to that seat's local path where the prompt lives."
-    Record-FailureClass "missing-prompt"
-    Exit-Wake 2
+    $fallback = Join-Path $StateDir "prompts\$Seat-wake-prompt.md"
+    if (Test-Path $fallback) {
+        Write-LocalLog "PROMPT-FALLBACK: $PromptFile absent in $RepoRoot (branch $(git -C $RepoRoot rev-parse --abbrev-ref HEAD 2>$null)); using $fallback"
+        $prompt = $fallback
+    }
+    else {
+        Write-WakeFailure "$PromptFile missing at $prompt (RepoRoot=$RepoRoot) and no fallback at $fallback. A prompt committed only to a feature branch disappears when the seat switches branches - keep the fallback copy current."
+        Record-FailureClass "missing-prompt"
+        Exit-Wake 2
+    }
 }
 $cliName = $Engine
 $cli = Get-Command $cliName -ErrorAction SilentlyContinue
@@ -214,18 +233,29 @@ $reportsBefore = @(Get-ChildItem $ReportsDir -File -ErrorAction SilentlyContinue
     Select-Object -ExpandProperty Name)
 
 if (Test-Path $StderrFile) { Remove-Item $StderrFile -Force -ErrorAction SilentlyContinue }
+if (Test-Path $TranscriptFile) { Remove-Item $TranscriptFile -Force -ErrorAction SilentlyContinue }
+
+# PowerShell 5.1 wraps every stderr line of a NATIVE command in a
+# NativeCommandError record. Under ErrorActionPreference=Stop that is a
+# TERMINATING error, so a healthy engine printing its banner to stderr kills
+# the wrapper before it can log anything - exit 1, no log line, no artifact,
+# nothing to read. Codex prints its version banner to stderr on every run, so
+# this fires every time. Relaxed for the engine call only, restored after.
+$enginePreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 if ($Engine -eq "codex") {
-    Get-Content $prompt -Raw | & codex exec - -s workspace-write --add-dir $ReportsDir --skip-git-repo-check --color never 2>$StderrFile
+    Get-Content $prompt -Raw | & codex exec - -s workspace-write --add-dir $ReportsDir --skip-git-repo-check --color never 1>$TranscriptFile 2>$StderrFile
 } elseif ($Engine -eq "grok") {
     # Windows: do not pass --cwd as a separate argv (grok 1.0.5 treats path as unexpected).
     # Already Set-Location $RepoRoot above. Pass -p via argument array for safe quoting.
     $promptText = Get-Content $prompt -Raw
     $grokArgs = @('--no-auto-update', '--always-approve', '-p', $promptText)
-    & grok @grokArgs 2>$StderrFile
+    & grok @grokArgs 1>$TranscriptFile 2>$StderrFile
 } else {
-    Get-Content $prompt -Raw | & claude -p 2>$StderrFile
+    Get-Content $prompt -Raw | & claude -p 1>$TranscriptFile 2>$StderrFile
 }
 $engineExit = $LASTEXITCODE
+$ErrorActionPreference = $enginePreference
 
 Write-UsageLine
 
@@ -255,8 +285,36 @@ if ($newClaims.Count -eq 0) {
 }
 
 Start-Sleep -Seconds 5
-$orphans = @(Get-Process python*, py*, pytest* -ErrorAction SilentlyContinue |
-    Where-Object { $_.StartTime -gt $wakeStart })
+
+# Only THIS wake's descendants. The previous check matched every python-ish
+# process on the machine started after the wake began, so on 2026-08-24 a WEB
+# wake killed two unrelated python processes belonging to another session.
+# Killing a bystander is worse than the orphan it was cleaning up, so
+# parentage is walked rather than guessed from a name and a timestamp.
+function Get-DescendantIds {
+    param([int]$RootId)
+    $all = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Select-Object ProcessId, ParentProcessId
+    $found = @()
+    $frontier = @($RootId)
+    while ($frontier.Count -gt 0) {
+        $next = @()
+        foreach ($parent in $frontier) {
+            foreach ($proc in $all) {
+                if ($proc.ParentProcessId -eq $parent -and $found -notcontains $proc.ProcessId) {
+                    $found += $proc.ProcessId
+                    $next += $proc.ProcessId
+                }
+            }
+        }
+        $frontier = $next
+    }
+    return $found
+}
+
+$descendants = Get-DescendantIds -RootId $PID
+$orphans = @(Get-Process -Id $descendants -ErrorAction SilentlyContinue |
+    Where-Object { $_.ProcessName -match '^(python|py|pytest|node)' -and $_.StartTime -gt $wakeStart })
 if ($orphans.Count -gt 0) {
     $names = ($orphans | ForEach-Object { "$($_.ProcessName):$($_.Id)" }) -join ", "
     $orphans | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -264,14 +322,69 @@ if ($orphans.Count -gt 0) {
     Record-FailureClass "orphan-process"
     Exit-Wake 1
 }
-if ($engineExit -ne 0) {
-    $tail = ""
+# Everything a failure report needs, gathered once. A one-line symptom is
+# what turned a ten-minute fix into two days, so every WAKE-FAILURE below
+# carries the exit code and the tail of what the engine actually said.
+function Get-EngineTail {
+    $parts = @()
     if (Test-Path $StderrFile) {
-        $tail = (Get-Content $StderrFile -Tail 40 -ErrorAction SilentlyContinue | Out-String)
+        $err = (Get-Content $StderrFile -Tail 25 -ErrorAction SilentlyContinue | Out-String).Trim()
+        if ($err) { $parts += "stderr tail:`n$err" }
     }
-    if ([string]::IsNullOrWhiteSpace($tail)) { $tail = "(no stderr captured)" }
-    Write-WakeFailure "engine exited $engineExit`nstderr tail:`n$tail"
+    if (Test-Path $TranscriptFile) {
+        $out = (Get-Content $TranscriptFile -Tail 25 -ErrorAction SilentlyContinue | Out-String).Trim()
+        if ($out) { $parts += "transcript tail:`n$out" }
+    }
+    if ($parts.Count -eq 0) { return "(engine produced no stderr and no stdout)" }
+    return ($parts -join "`n`n")
+}
+
+# What the engine said, on BOTH streams. Which stream a given engine uses is
+# its choice and it changes between versions: codex puts its banner and its
+# exec-helper rejections on stderr and its own STATUS line on stdout. A check
+# that reads one stream picks the wrong failure class half the time.
+$engineSaid = ""
+foreach ($f in @($TranscriptFile, $StderrFile)) {
+    if (Test-Path $f) {
+        $engineSaid += (Get-Content $f -Raw -ErrorAction SilentlyContinue)
+    }
+}
+
+if ($engineExit -ne 0) {
+    Write-WakeFailure "engine exited $engineExit`n$(Get-EngineTail)"
     Record-FailureClass "engine-exit-$engineExit"
+    Exit-Wake 1
+}
+
+# --- NO FALSE SUCCESS ------------------------------------------------------
+# Exit 0 is the engine saying "I finished", not "I did the work". On
+# 2026-08-24 codex exited 0 having declared STATUS: FAILED, claimed nothing
+# and written no report - and this wrapper logged OK. Two independent checks
+# now stand between the engine and the word OK.
+
+# 1. The engine cannot run commands at all. Codex's sandbox helper is
+#    rejected by this machine ("Failed to create unified exec process"), so
+#    the seat can read its prompt and reason but cannot resolve the law,
+#    verify a stamp, or write a report. That is one line, said plainly.
+if ($engineSaid -match 'Failed to create unified exec process|helper_unknown_error') {
+    Write-WakeFailure "engine cannot execute commands on this machine (exec helper rejected) - the seat could reason but could not run the law resolver, verify a stamp or write a report`n$(Get-EngineTail)"
+    Record-FailureClass "engine-exec-helper-rejected"
+    Exit-Wake 1
+}
+
+# 2. The engine declared its own failure while exiting 0.
+if ($engineSaid -match 'STATUS:\s*FAILED|LAW-VERSION:\s*UNRESOLVED') {
+    Write-WakeFailure "engine exited 0 but declared failure in its own output`n$(Get-EngineTail)"
+    Record-FailureClass "engine-declared-failure"
+    Exit-Wake 1
+}
+
+# 3. Nothing was produced. A genuinely idle wake writes a heartbeat (which is
+#    suppressed above, so it still counts here); a wake that produced no
+#    claim, no report and no heartbeat did not work, whatever it exited.
+if ($newClaims.Count -eq 0 -and $newOutcomes.Count -eq 0) {
+    Write-WakeFailure "engine exited 0 with no evidence of work: no claim, no report and no heartbeat on Drive`n$(Get-EngineTail)"
+    Record-FailureClass "no-evidence-of-work"
     Exit-Wake 1
 }
 
