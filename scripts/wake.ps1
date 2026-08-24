@@ -228,6 +228,73 @@ if ($null -eq $cli) {
     Exit-Wake 2
 }
 
+# --- DRIVE STAGING ---------------------------------------------------------
+# Proven on 2026-08-24 by three controlled runs against codex-cli 0.149.1:
+#   --add-dir "G:\My Drive\AGENT-REPORTS"  -> sandbox helper never starts
+#       ("Failed to create unified exec process: setup refresh had errors")
+#   no --add-dir at all                     -> commands run, but every read
+#       AND write of G:\ is "Access is denied"
+#   --add-dir <local NTFS dir>              -> commands run, reads and writes
+#       both work
+# A junction from C:\ to the Drive folder fails exactly like the direct path,
+# so the Drive provider itself is what the sandbox cannot set up. The engine
+# therefore never touches Drive: the WRAPPER, which is not sandboxed and
+# already writes WAKE-FAILURE files there, stages work in and copies results
+# out. Nothing here needs a new permission, and removing it restores the old
+# behaviour exactly.
+$StageDir = Join-Path $StateDir "stage\$Seat"
+$StageInbox = Join-Path $StageDir "INBOX"
+$StageOut = Join-Path $StageDir "OUT"
+$DoneManifest = Join-Path $StageDir "DONE-MOVES.txt"
+
+function Initialize-Stage {
+    if (Test-Path $StageDir) { Remove-Item $StageDir -Recurse -Force -ErrorAction SilentlyContinue }
+    New-Item -ItemType Directory -Force -Path $StageInbox | Out-Null
+    New-Item -ItemType Directory -Force -Path $StageOut | Out-Null
+
+    $driveInbox = Join-Path $ReportsDir "INBOX"
+    if (Test-Path $driveInbox) {
+        Copy-Item (Join-Path $driveInbox "*.md") -Destination $StageInbox -ErrorAction SilentlyContinue
+    }
+    $law = Join-Path $ReportsDir "SEAT-BOOT.md"
+    if (Test-Path $law) { Copy-Item $law -Destination $StageDir -ErrorAction SilentlyContinue }
+
+    # Filenames only: the seat needs to see what claims and reports already
+    # exist (so it does not duplicate one) without copying 1300 files.
+    Get-ChildItem $ReportsDir -File -ErrorAction SilentlyContinue |
+        Select-Object -ExpandProperty Name |
+        Set-Content -Path (Join-Path $StageDir "REPORTS-INDEX.txt") -Encoding utf8
+    Write-LocalLog "STAGE-IN: $((Get-ChildItem $StageInbox -File -ErrorAction SilentlyContinue).Count) INBOX files staged to $StageDir"
+}
+
+function Publish-Stage {
+    # Copy the seat's outputs to Drive, then apply any requested DONE moves.
+    # Copy first: a move applied before its report landed would leave an
+    # assignment marked done with nothing to show for it.
+    $published = @()
+    foreach ($f in @(Get-ChildItem $StageOut -File -ErrorAction SilentlyContinue)) {
+        Copy-Item $f.FullName -Destination (Join-Path $ReportsDir $f.Name) -Force -ErrorAction SilentlyContinue
+        $published += $f.Name
+    }
+    if ($published.Count -gt 0) {
+        Write-LocalLog "STAGE-OUT: published $($published.Count) file(s) to Drive: $($published -join ', ')"
+    }
+    if (Test-Path $DoneManifest) {
+        foreach ($line in (Get-Content $DoneManifest -ErrorAction SilentlyContinue)) {
+            $name = $line.Trim()
+            if (-not $name) { continue }
+            $src = Join-Path (Join-Path $ReportsDir "INBOX") $name
+            if (Test-Path $src) {
+                Move-Item $src -Destination (Join-Path $ReportsDir "DONE") -Force -ErrorAction SilentlyContinue
+                Write-LocalLog "STAGE-DONE: moved $name to DONE"
+            }
+        }
+    }
+    return $published
+}
+
+Initialize-Stage
+
 $wakeStart = Get-Date
 $reportsBefore = @(Get-ChildItem $ReportsDir -File -ErrorAction SilentlyContinue |
     Select-Object -ExpandProperty Name)
@@ -244,7 +311,7 @@ if (Test-Path $TranscriptFile) { Remove-Item $TranscriptFile -Force -ErrorAction
 $enginePreference = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 if ($Engine -eq "codex") {
-    Get-Content $prompt -Raw | & codex exec - --dangerously-bypass-approvals-and-sandbox --add-dir $ReportsDir --skip-git-repo-check --color never 1>$TranscriptFile 2>$StderrFile
+    Get-Content $prompt -Raw | & codex exec - --dangerously-bypass-approvals-and-sandbox --add-dir $StageDir --skip-git-repo-check --color never 1>$TranscriptFile 2>$StderrFile
 } elseif ($Engine -eq "grok") {
     # Windows: do not pass --cwd as a separate argv (grok 1.0.5 treats path as unexpected).
     # Already Set-Location $RepoRoot above. Pass -p via argument array for safe quoting.
@@ -256,6 +323,11 @@ if ($Engine -eq "codex") {
 }
 $engineExit = $LASTEXITCODE
 $ErrorActionPreference = $enginePreference
+
+# Publish BEFORE the outcome checks below, so a staged report counts as the
+# evidence of work it is. Publishing after would make every successful wake
+# look workless and fail it.
+$publishedNames = Publish-Stage
 
 Write-UsageLine
 
@@ -357,34 +429,30 @@ if ($engineExit -ne 0) {
     Exit-Wake 1
 }
 
-# --- NO FALSE SUCCESS ------------------------------------------------------
+# --- NO FALSE SUCCESS, AND NO FALSE FAILURE -------------------------------
 # Exit 0 is the engine saying "I finished", not "I did the work". On
 # 2026-08-24 codex exited 0 having declared STATUS: FAILED, claimed nothing
-# and written no report - and this wrapper logged OK. Two independent checks
-# now stand between the engine and the word OK.
+# and written no report - and this wrapper logged OK.
+#
+# But the first version of this guard over-corrected: it failed any wake whose
+# transcript mentioned a helper rejection, even when the engine had RETRIED,
+# recovered, resolved the law and published a heartbeat. A recovered error is
+# not a failed wake. So evidence of work is decided FIRST, and the transcript
+# is only consulted when there is none.
+$hasEvidence = ($newClaims.Count -gt 0) -or ($newOutcomes.Count -gt 0) -or ($publishedNames.Count -gt 0)
 
-# 1. The engine cannot run commands at all. Codex's sandbox helper is
-#    rejected by this machine ("Failed to create unified exec process"), so
-#    the seat can read its prompt and reason but cannot resolve the law,
-#    verify a stamp, or write a report. That is one line, said plainly.
-if ($engineSaid -match 'Failed to create unified exec process|helper_unknown_error') {
-    Write-WakeFailure "engine cannot execute commands on this machine (exec helper rejected) - the seat could reason but could not run the law resolver, verify a stamp or write a report`n$(Get-EngineTail)"
-    Record-FailureClass "engine-exec-helper-rejected"
-    Exit-Wake 1
-}
-
-# 2. The engine declared its own failure while exiting 0.
-if ($engineSaid -match 'STATUS:\s*FAILED|LAW-VERSION:\s*UNRESOLVED') {
-    Write-WakeFailure "engine exited 0 but declared failure in its own output`n$(Get-EngineTail)"
-    Record-FailureClass "engine-declared-failure"
-    Exit-Wake 1
-}
-
-# 3. Nothing was produced. A genuinely idle wake writes a heartbeat (which is
-#    suppressed above, so it still counts here); a wake that produced no
-#    claim, no report and no heartbeat did not work, whatever it exited.
-if ($newClaims.Count -eq 0 -and $newOutcomes.Count -eq 0) {
-    Write-WakeFailure "engine exited 0 with no evidence of work: no claim, no report and no heartbeat on Drive`n$(Get-EngineTail)"
+if (-not $hasEvidence) {
+    if ($engineSaid -match 'Failed to create unified exec process|helper_unknown_error') {
+        Write-WakeFailure "engine cannot execute commands on this machine (exec helper rejected) and produced nothing - the seat could reason but could not run the law resolver, verify a stamp or write a report`n$(Get-EngineTail)"
+        Record-FailureClass "engine-exec-helper-rejected"
+        Exit-Wake 1
+    }
+    if ($engineSaid -match 'STATUS:\s*FAILED|LAW-VERSION:\s*UNRESOLVED') {
+        Write-WakeFailure "engine exited 0 but declared failure in its own output and produced nothing`n$(Get-EngineTail)"
+        Record-FailureClass "engine-declared-failure"
+        Exit-Wake 1
+    }
+    Write-WakeFailure "engine exited 0 with no evidence of work: no claim, no report and no heartbeat`n$(Get-EngineTail)"
     Record-FailureClass "no-evidence-of-work"
     Exit-Wake 1
 }

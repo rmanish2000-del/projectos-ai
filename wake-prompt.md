@@ -33,6 +33,32 @@ Read the file it names and state that LAW-VERSION in your report. Exit 2
 means the law is missing or contested: report that and stop rather than
 booting on a guess.
 
+## WHERE YOUR FILES ARE - read this before touching any path
+
+**You cannot reach `G:\My Drive` and you must not try.** Proven on 2026-08-24
+against codex-cli 0.149.1: with the Drive folder passed to the sandbox the
+engine cannot start a single process; without it every read and write of `G:\`
+is "Access is denied". The wrapper, which is not sandboxed, does the Drive I/O
+for you. Your whole world is one local staging folder:
+
+    %USERPROFILE%\.projectos\stage\PROJECTOS
+- `INBOX\`            - the fleet INBOX, copied fresh for this wake. Read it here.
+- `SEAT-BOOT.md`      - the law, copied fresh. Read it here and state its LAW-VERSION.
+- `REPORTS-INDEX.txt` - the filenames already in AGENT-REPORTS, so you can see
+                        whether a claim or report for your assignment exists
+                        before you write a duplicate.
+- `OUT\`              - **write every output here**: your claim file, your
+                        report, a heartbeat. Use the exact filename it should
+                        have on Drive. The wrapper copies them across when you
+                        exit.
+- `DONE-MOVES.txt`    - to move a finished assignment to DONE, append its
+                        filename here, one per line. The wrapper performs the
+                        move AFTER your report has been published, never before.
+
+Writing to `OUT\` is how you write to Drive. A report you do not put in `OUT\`
+does not exist, and the wrapper will fail the wake for producing no evidence
+of work.
+
 ## The loop — one pass, one assignment, then exit
 
 1. READ the INBOX: list `G:\My Drive\AGENT-REPORTS\INBOX` fresh — the
