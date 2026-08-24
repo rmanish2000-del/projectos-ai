@@ -138,3 +138,43 @@ def test_a_law_named_only_in_its_heading_still_counts(tmp_path: Path) -> None:
         "# SEAT-BOOT - the fleet law\n**LAW-VERSION: 4**\n", encoding="utf-8"
     )
     assert resolve_law(tmp_path).version == 4
+
+
+def test_a_report_citing_the_law_is_not_a_rival_law_file(tmp_path: Path) -> None:
+    # 2026-08-24: every report opens by stating which law it booted from
+    # ("SEAT-BOOT LAW-VERSION 9"). Eight archived reports thereby became rival
+    # claimants and the resolver refused to resolve, blocking the seat's boot.
+    # Citing the law is not claiming to BE the law.
+    (tmp_path / "2026-08-22_1633_PROJECTOS_FLEET-RUNNING.md").write_text(
+        "DONE: LAW-VERSION 9. PROJECTOS. SEAT-BOOT read.\n", encoding="utf-8"
+    )
+    _law(tmp_path, "SEAT-BOOT.md", 9)
+    assert resolve_law(tmp_path).path.name == "SEAT-BOOT.md"
+
+
+@pytest.mark.parametrize("prefix", ["RPT-", "PARKED-", "DONE-"])
+def test_consumed_file_prefixes_are_retired(prefix: str, tmp_path: Path) -> None:
+    # The fleet marks consumed files with these; a consumed copy of the law is
+    # not the law, whatever version it still declares.
+    _law(tmp_path, f"{prefix}2026-08-21_SEAT-BOOT.md", 12)
+    _law(tmp_path, "SEAT-BOOT.md", 9)
+    assert resolve_law(tmp_path).version == 9
+
+
+def test_a_file_naming_the_law_in_prose_but_not_in_a_heading_is_ignored(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "some-confirmation.md").write_text(
+        "We confirm the SEAT-BOOT contract.\nLAW-VERSION: 9\n", encoding="utf-8"
+    )
+    _law(tmp_path, "SEAT-BOOT.md", 9)
+    assert resolve_law(tmp_path).path.name == "SEAT-BOOT.md"
+
+
+def test_the_real_fleet_folder_resolves_to_exactly_one_law() -> None:
+    # The regression that mattered: this call returned "refusing to guess"
+    # against the live folder and stopped the seat booting.
+    live = Path("G:/My Drive/AGENT-REPORTS")
+    if not live.exists():  # pragma: no cover - Drive not mounted in CI
+        pytest.skip("fleet Drive folder not mounted")
+    assert resolve_law(live).path.name == "SEAT-BOOT.md"

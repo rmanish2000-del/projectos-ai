@@ -32,6 +32,14 @@ RETIRED_PREFIXES: tuple[str, ...] = (
     "FAILED-UPLOAD-",
     "CANCELLED-",
     "DRAFT-",
+    # Added 2026-08-24. The fleet adopted RPT-/PARKED-/DONE- prefixes for
+    # consumed files, and reports carry the LAW-VERSION they booted from in
+    # their own first line - so eight archived reports became rival claimants
+    # to being the law and the resolver refused to resolve at all. Correct
+    # caution, wrong candidate set.
+    "RPT-",
+    "PARKED-",
+    "DONE-",
 )
 
 #: The law states its version in its own first lines, with or without markdown
@@ -82,7 +90,17 @@ def _declared_version(path: Path) -> int | None:
     except OSError:
         return None
 
-    identifies_as_law = LAW_NAME in path.name.upper() or LAW_NAME in head[:200].upper()
+    # Self-identification, tightened 2026-08-24. Naming SEAT-BOOT anywhere in
+    # the opening lines is not enough: every report states which law it booted
+    # from ("SEAT-BOOT LAW-VERSION 9"), and that is a citation, not a claim to
+    # BE the law. A law file either carries the name in its filename or opens
+    # with it as its first heading.
+    first_heading = next(
+        (line for line in head.splitlines() if line.lstrip().startswith("#")), ""
+    )
+    identifies_as_law = (
+        LAW_NAME in path.name.upper() or LAW_NAME in first_heading.upper()
+    )
     if not identifies_as_law:
         return None
 
