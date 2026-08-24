@@ -10,6 +10,9 @@ on:
       - ".github/workflows/restocker-gate.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   gate:
     strategy:
