@@ -79,6 +79,8 @@ schtasks /create /tn "FLEET\WAKE-WEB"       /tr "wscript.exe //B //Nologo C:\Pro
 schtasks /create /tn "FLEET\WAKE-PROJECTOS" /tr "wscript.exe //B //Nologo C:\ProjectOS-AI\scripts\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProjectOS-AI\scripts\wake.ps1" /sc daily /st 09:09 /ri 20 /du 10:00 /f
 schtasks /create /tn "FLEET\WAKE-WARRANT"   /tr "wscript.exe //B //Nologo C:\ProjectOS-AI\scripts\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File C:\Push-to-Prod-2026\warrant\scripts\wake.ps1 -RepoRoot C:\Push-to-Prod-2026\warrant -Seat WARRANT" /sc daily /st 09:12 /ri 20 /du 10:00 /f
 schtasks /create /tn "FLEET\WAKE-WMCP"      /tr "wscript.exe //B //Nologo C:\ProjectOS-AI\scripts\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File C:\Push-to-Prod-2026\warrant-mcp\scripts\wake.ps1 -RepoRoot C:\Push-to-Prod-2026\warrant-mcp -Seat WMCP" /sc daily /st 09:19 /ri 20 /du 10:00 /f
+schtasks /create /tn "FLEET\WAKE-CHIEF"     /tr "wscript.exe //B //Nologo C:\ProjectOS-AI\scripts\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProjectOS-AI\scripts\wake.ps1 -Seat CHIEF -PromptFile wake-prompt-chief.md" /sc daily /st 09:30 /ri 60 /du 10:00 /f
+schtasks /change /tn "FLEET\WAKE-CHIEF" /disable
 schtasks /create /tn "FLEET\WAKE-CHAT-RESTOCK" /tr "wscript.exe //B //Nologo C:\ProjectOS-AI\scripts\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProjectOS-AI\scripts\wake.ps1 -Seat CHAT-AUTO-RESTOCK -PromptFile wake-prompt-chat.md" /sc daily /st 09:15 /ri 20 /du 10:00 /f
 schtasks /change /tn "FLEET\WAKE-CHAT-RESTOCK" /disable
 

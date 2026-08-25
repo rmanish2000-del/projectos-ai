@@ -260,6 +260,29 @@ function Initialize-Stage {
     Get-ChildItem $ReportsDir -File -ErrorAction SilentlyContinue |
         Select-Object -ExpandProperty Name |
         Set-Content -Path (Join-Path $StageDir "REPORTS-INDEX.txt") -Encoding utf8
+
+    if ($Seat -eq "CHIEF") {
+        $stateStage = Join-Path $StageDir "STATE"
+        New-Item -ItemType Directory -Force -Path $stateStage | Out-Null
+        $chiefStateFiles = @(
+            "CHAT-HANDOFF.md",
+            "FOCUS-LAW.md",
+            "CHAT-DEFECT-REGISTER.md",
+            "CHIEF-SEAT-SPEC-REV2-CORRECTION.md",
+            "SEAT-WINDOW-MAP.md",
+            "2026-08-21_CHAT_PARKED-SIX-ASSIGNMENTS.md"
+        )
+        foreach ($name in $chiefStateFiles) {
+            $source = Join-Path $ReportsDir $name
+            if (Test-Path $source) { Copy-Item $source -Destination $stateStage }
+        }
+        Get-ChildItem $ReportsDir -File -ErrorAction SilentlyContinue |
+            Copy-Item -Destination $stateStage -ErrorAction SilentlyContinue
+        $chiefWatermark = Join-Path $StateDir "chief-watermark.txt"
+        if (Test-Path $chiefWatermark) {
+            Copy-Item $chiefWatermark -Destination (Join-Path $StageDir "CHIEF-WATERMARK.txt")
+        }
+    }
     Write-LocalLog "STAGE-IN: $((Get-ChildItem $StageInbox -File -ErrorAction SilentlyContinue).Count) INBOX files staged to $StageDir"
 }
 
@@ -284,6 +307,20 @@ function Publish-Stage {
                 Move-Item $src -Destination (Join-Path $ReportsDir "DONE") -Force -ErrorAction SilentlyContinue
                 Write-LocalLog "STAGE-DONE: moved $name to DONE"
             }
+        }
+    }
+    if ($Seat -eq "CHIEF") {
+        $driveInbox = Join-Path $ReportsDir "INBOX"
+        foreach ($f in @(Get-ChildItem $StageInbox -File -ErrorAction SilentlyContinue)) {
+            $target = Join-Path $driveInbox $f.Name
+            if (-not (Test-Path $target)) {
+                Copy-Item $f.FullName -Destination $target
+                Write-LocalLog "CHIEF-ISSUED: $($f.Name)"
+            }
+        }
+        $stagedWatermark = Join-Path $StageDir "CHIEF-WATERMARK.txt"
+        if (Test-Path $stagedWatermark) {
+            Copy-Item $stagedWatermark -Destination (Join-Path $StateDir "chief-watermark.txt") -Force
         }
     }
     return $published

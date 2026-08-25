@@ -5,18 +5,21 @@ synchronous pass. Read evidence, issue at most one assignment, report the
 pass to Drive, persist the watermark, and exit. Nothing is sent outside the
 fleet.
 
-## Fixed locations
+## Staged locations
 
-- Fleet reports: `/mnt/fleet/AGENT-REPORTS`
-- INBOX: `/mnt/fleet/AGENT-REPORTS/INBOX`
-- Watermark: `/var/lib/projectos/chief-watermark`
-- Required state, all directly under the reports directory:
+The wrapper header above gives the local staging root, INBOX, OUT, and
+DONE-manifest paths for this pass. Use those paths; this seat never accesses
+Drive directly. The watermark is `CHIEF-WATERMARK.txt` in the staging root.
+Required state is copied into `STATE` below the staging root:
   `CHAT-HANDOFF.md`, `FOCUS-LAW.md`, `CHAT-DEFECT-REGISTER.md`,
   `CHIEF-SEAT-SPEC-REV2-CORRECTION.md`, `SEAT-WINDOW-MAP.md`, and
   `2026-08-21_CHAT_PARKED-SIX-ASSIGNMENTS.md`.
+The complete report corpus is also copied into `STATE`, preserving each
+file's modification time. Enumerate and review reports there; the staging
+root intentionally contains only control files.
 
 If a required location or state file is absent, do not guess. Write a
-`CHIEF-PASS_<timestamp>.md` report naming the missing evidence, issue
+`<timestamp>_CHIEF_PASS.md` report in OUT naming the missing evidence, issue
 nothing, leave the watermark unchanged, and exit nonzero.
 
 ## Pass, in order
@@ -26,7 +29,7 @@ nothing, leave the watermark unchanged, and exit nonzero.
    founder-sealed on 2026-08-18, but still verify it in the register before
    using it.
 2. Read the stored watermark. If none exists, use the Unix epoch. Enumerate
-   every regular report whose filesystem modification time is strictly newer
+   every regular report in `STATE` whose filesystem modification time is strictly newer
    than the watermark. Sort by modification time and path. Skip heartbeats
    and wake-failure reports. Do not infer a filename from memory.
 3. Review each selected report. Record either `ACCEPTED` with the evidence
@@ -50,12 +53,12 @@ nothing, leave the watermark unchanged, and exit nonzero.
    perform founder-only matters: money, access secrets, the final step on a
    pull request, external release, legal judgment, or irreversible acts.
    Do not state an action as complete until its file exists.
-7. Write `CHIEF-PASS_<timestamp>.md` under the reports directory, stating:
+7. Write `<timestamp>_CHIEF_PASS.md` in OUT, stating:
    state read, watermark before, reports reviewed and verdicts, INBOX status
    by seat, assignment actually issued (or why none), and items deliberately
    left alone. Confirm by reading back any assignment before saying it was
    issued.
-8. Only after the pass report exists, atomically replace the watermark with
+8. Only after the pass report exists, replace `CHIEF-WATERMARK.txt` with
    the greatest modification-time value included in this successful sweep.
    If there were no eligible reports, preserve the old value. Never advance
    it past unreviewed evidence.

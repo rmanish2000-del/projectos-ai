@@ -292,3 +292,21 @@ def test_the_wrapper_builds_the_prompt_rather_than_trusting_disk() -> None:
     source = WAKE.read_text(encoding="utf-8-sig")
     assert "$StagedPrompt = Join-Path $StageDir" in source
     assert "Get-Content $prompt -Raw | & codex exec -" not in source
+
+
+def test_chief_stages_required_state_and_persistent_watermark() -> None:
+    source = WAKE.read_text(encoding="utf-8-sig")
+    assert '$Seat -eq "CHIEF"' in source
+    assert '"CHIEF-SEAT-SPEC-REV2-CORRECTION.md"' in source
+    assert 'Join-Path $StateDir "chief-watermark.txt"' in source
+    assert 'Join-Path $StageDir "CHIEF-WATERMARK.txt"' in source
+    prompt = (WAKE.parent.parent / "wake-prompt-chief.md").read_text(encoding="utf-8")
+    assert "complete report corpus is also copied into `STATE`" in prompt
+    assert "regular report in `STATE`" in prompt
+
+
+def test_chief_publishes_only_new_staged_inbox_files() -> None:
+    source = WAKE.read_text(encoding="utf-8-sig")
+    assert 'foreach ($f in @(Get-ChildItem $StageInbox -File' in source
+    assert 'if (-not (Test-Path $target))' in source
+    assert 'Write-LocalLog "CHIEF-ISSUED: $($f.Name)"' in source

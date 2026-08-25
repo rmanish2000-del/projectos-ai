@@ -34,6 +34,18 @@
                       "duration":  "PT10H"
                   },
                   {
+                      "name":  "WAKE-CHIEF",
+                      "execute":  "wscript.exe",
+                      "arguments":  "//B //Nologo C:\\ProjectOS-AI\\scripts\\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File C:\\ProjectOS-AI\\scripts\\wake.ps1 -Seat CHIEF -PromptFile wake-prompt-chief.md",
+                      "user":  "rmani",
+                      "logon":  "Interactive",
+                      "runlevel":  "Limited",
+                      "start":  "2026-08-25T09:30:00",
+                      "interval":  "PT60M",
+                      "duration":  "PT10H",
+                      "enabled":  false
+                  },
+                  {
                       "name":  "WAKE-EDUOS",
                       "execute":  "wscript.exe",
                       "arguments":  "//B //Nologo C:\\ProjectOS-AI\\scripts\\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\EduOS\\scripts\\wake.ps1\" -RepoRoot \"C:\\EduOS\" -Seat EDUOS",
