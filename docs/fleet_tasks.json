@@ -117,11 +117,11 @@
                       "user":  "rmani",
                       "logon":  "Interactive",
                       "runlevel":  "Limited",
-                      "start":  "2026-08-25T09:19:00+05:30",
+                      "start":  "2026-08-25T09:19:00",
                       "interval":  "PT20M",
                       "duration":  "PT10H"
                   }
               ],
-    "generated":  "2026-08-21",
+    "generated":  "2026-08-25",
     "note":  "reviewed FLEET task definitions"
 }
