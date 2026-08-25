@@ -109,6 +109,17 @@
                       "start":  "2026-08-20T09:06:00",
                       "interval":  "PT20M",
                       "duration":  "PT10H"
+                  },
+                  {
+                      "name":  "WAKE-WMCP",
+                      "execute":  "wscript.exe",
+                      "arguments":  "//B //Nologo C:\\ProjectOS-AI\\scripts\\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Push-to-Prod-2026\\warrant-mcp\\scripts\\wake.ps1 -RepoRoot C:\\Push-to-Prod-2026\\warrant-mcp -Seat WMCP",
+                      "user":  "rmani",
+                      "logon":  "Interactive",
+                      "runlevel":  "Limited",
+                      "start":  "2026-08-25T09:19:00+05:30",
+                      "interval":  "PT20M",
+                      "duration":  "PT10H"
                   }
               ],
     "generated":  "2026-08-21",
