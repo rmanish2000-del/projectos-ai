@@ -68,6 +68,18 @@
                       "duration":  "PT10H"
                   },
                   {
+                      "name":  "WAKE-LSN",
+                      "execute":  "wscript.exe",
+                      "arguments":  "//B //Nologo C:\\ProjectOS-AI\\scripts\\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Push-to-Prod-2026\\learning-start-nexus\\scripts\\wake.ps1 -RepoRoot C:\\Push-to-Prod-2026\\learning-start-nexus -Seat LSN",
+                      "user":  "rmani",
+                      "logon":  "Interactive",
+                      "runlevel":  "Limited",
+                      "start":  "2026-08-31T09:10:00",
+                      "interval":  "PT20M",
+                      "duration":  "PT10H",
+                      "enabled":  true
+                  },
+                  {
                       "name":  "WAKE-PROJECTOS",
                       "execute":  "wscript.exe",
                       "arguments":  "//B //Nologo C:\\ProjectOS-AI\\scripts\\run-hidden.vbs powershell -NoProfile -ExecutionPolicy Bypass -File C:\\ProjectOS-AI\\scripts\\wake.ps1",
