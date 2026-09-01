@@ -58,6 +58,17 @@ def _run_wake(
     seat = seat or _fresh_seat(tmp_path)
     reports = tmp_path / "reports"
     reports.mkdir(exist_ok=True)
+    # Since 2026-09-01 the wrapper exits early and starts no engine when the
+    # INBOX holds nothing tagged for the seat. Every test written before that
+    # assumes the wake proceeds, so unless the test has seeded its own INBOX
+    # we give it one claimable file - otherwise those tests would silently
+    # assert against a skip instead of the path they were written for.
+    inbox = reports / "INBOX"
+    if not inbox.exists():
+        inbox.mkdir(parents=True)
+        (inbox / f"2026-09-01_0900_{seat}_SEEDED-SO-THE-WAKE-PROCEEDS.md").write_text(
+            "# assignment" + chr(10) + "body" + chr(10), encoding="utf-8"
+        )
     return subprocess.run(
         [
             "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
@@ -263,7 +274,7 @@ def test_each_seat_is_told_its_own_out_directory(tmp_path: Path, suffix: str) ->
     seat = _fresh_seat(tmp_path) + suffix
     text = _staged_prompt_for(tmp_path, seat)
     assert text, "no staged prompt was built"
-    assert f"stage\{seat}\OUT" in text
+    assert f"stage\\{seat}\\OUT" in text
 
 
 @pytest.mark.parametrize("suffix", ["AIWLIKE", "WARRANTLIKE"])
@@ -276,7 +287,7 @@ def test_a_seat_is_never_pointed_at_another_seats_out(
     text = _staged_prompt_for(tmp_path, seat)
     header = text.split("---", 1)[0]
     assert "stage\PROJECTOS\OUT" not in header
-    assert f"stage\{seat}\OUT" in header
+    assert f"stage\\{seat}\\OUT" in header
 
 
 def test_the_injected_header_declares_itself_authoritative(tmp_path: Path) -> None:
@@ -310,3 +321,66 @@ def test_chief_publishes_only_new_staged_inbox_files() -> None:
     assert 'foreach ($f in @(Get-ChildItem $StageInbox -File' in source
     assert 'if (-not (Test-Path $target))' in source
     assert 'Write-LocalLog "CHIEF-ISSUED: $($f.Name)"' in source
+
+
+# --- an empty wake must cost nothing (end-to-end) --------------------------
+
+
+def _inbox(tmp_path: Path, *names: str) -> None:
+    box = tmp_path / "reports" / "INBOX"
+    box.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        (box / name).write_text("# assignment\nbody\n", encoding="utf-8")
+
+
+def test_nothing_tagged_for_this_seat_starts_no_engine(tmp_path: Path) -> None:
+    # END-TO-END, and the whole point of the change: measured over
+    # 2026-08-24..26, 301 of 477 engine sessions found nothing to do.
+    (tmp_path / "wake-prompt.md").write_text("do nothing", encoding="utf-8")
+    _inbox(tmp_path, "2026-09-01_1429_SOMEONEELSE_NOT-YOURS.md")
+    seat = _fresh_seat(tmp_path)
+    result = _run_wake(tmp_path, "-Engine", "grok", env=_path_without_engines())
+    assert result.returncode == 0, "an empty wake must succeed quietly, not fail"
+    log = (Path.home() / ".projectos" / f"wake-{seat}.log").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    assert "SKIP-EMPTY" in log
+
+
+def test_an_empty_wake_writes_nothing_to_drive(tmp_path: Path) -> None:
+    # END-TO-END. "A quiet seat must be free" - and free means the reports
+    # folder does not grow, not merely that no engine ran.
+    (tmp_path / "wake-prompt.md").write_text("do nothing", encoding="utf-8")
+    _inbox(tmp_path, "2026-09-01_1429_SOMEONEELSE_NOT-YOURS.md")
+    reports = tmp_path / "reports"
+    before = sorted(p.name for p in reports.iterdir())
+    _run_wake(tmp_path, "-Engine", "grok", env=_path_without_engines())
+    assert sorted(p.name for p in reports.iterdir()) == before
+
+
+def test_a_file_tagged_for_this_seat_does_start_the_engine(tmp_path: Path) -> None:
+    # END-TO-END. With no engine on PATH the wake gets past the claimable gate
+    # and then fails at engine availability (exit 2) - which proves the gate
+    # let it through without spending a session to prove it.
+    (tmp_path / "wake-prompt.md").write_text("do nothing", encoding="utf-8")
+    seat = _fresh_seat(tmp_path)
+    _inbox(tmp_path, f"2026-09-01_1429_{seat}_YOUR-WORK.md")
+    result = _run_wake(tmp_path, "-Engine", "grok", env=_path_without_engines())
+    assert result.returncode == 2
+    assert "not on PATH" in _failure_text(tmp_path)
+
+
+def test_an_all_tagged_file_starts_the_engine_for_any_seat(tmp_path: Path) -> None:
+    (tmp_path / "wake-prompt.md").write_text("do nothing", encoding="utf-8")
+    _inbox(tmp_path, "2026-09-01_0800_ALL_STANDING-RULE.md")
+    result = _run_wake(tmp_path, "-Engine", "grok", env=_path_without_engines())
+    assert result.returncode == 2  # got past the gate, died at the engine
+
+
+@pytest.mark.parametrize("prefix", ["DONE-", "PARKED-", "SUPERSEDED-", "RPT-"])
+def test_a_consumed_file_does_not_wake_a_seat(prefix: str, tmp_path: Path) -> None:
+    (tmp_path / "wake-prompt.md").write_text("do nothing", encoding="utf-8")
+    seat = _fresh_seat(tmp_path)
+    _inbox(tmp_path, f"{prefix}2026-09-01_1429_{seat}_ALREADY-DONE.md")
+    result = _run_wake(tmp_path, "-Engine", "grok", env=_path_without_engines())
+    assert result.returncode == 0  # skipped, not started

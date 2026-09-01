@@ -67,6 +67,19 @@ function Release-SeatLock {
 }
 
 function Exit-Wake([int]$code) {
+    # Refresh the board on the way out, but ONLY for a wake that actually
+    # started an engine. A wake that found nothing tagged for its seat must
+    # write nothing to Drive at all - that is the whole point of the skip, and
+    # a board rewrite would put the noise straight back.
+    if ($script:EngineStarted) {
+        try {
+            & py -3.11 -m projectos.infrastructure.fleet_board $ReportsDir 2>$null | Out-Null
+        }
+        catch {
+            # A board that cannot be written must never fail a wake.
+            Write-LocalLog "BOARD: could not refresh: $($_.Exception.Message)"
+        }
+    }
     Release-SeatLock
     exit $code
 }
@@ -224,6 +237,45 @@ if (-not (Test-Path $prompt)) {
         Exit-Wake 2
     }
 }
+# --- AN EMPTY WAKE MUST COST NOTHING ---------------------------------------
+# Measured over 2026-08-24..26: 477 engine sessions were spent and 301 of them
+# found nothing to do - 76%, 66% and 42% waste on the three days. Nine seats
+# waking every 20 minutes is roughly 650 wakes a day, and a seat with no
+# assignment was still starting the engine, resolving the law and burning a
+# session to conclude it had nothing to do. That is where the quota went.
+#
+# So the WRAPPER decides, in plain PowerShell, before any engine exists: is
+# there a file in the INBOX tagged for this seat or ALL? If not, exit 0
+# quietly. No engine, no staging, nothing written to Drive - the reports
+# folder is already noisy and a silent seat must not add to it. The skip is
+# logged locally so the count stays knowable.
+$InboxDir = Join-Path $ReportsDir "INBOX"
+$claimable = @()
+if (Test-Path $InboxDir) {
+    foreach ($f in @(Get-ChildItem $InboxDir -Filter "*.md" -File -ErrorAction SilentlyContinue)) {
+        # Consumed files are out, whatever they are tagged.
+        if ($f.Name -match '^(DONE-|PARKED-|SUPERSEDED-|RPT-)') { continue }
+        # The tag is the third underscore-delimited segment:
+        # <date>_<time>_<TAG>_<rest>.md . Seat names may contain hyphens
+        # (CHAT-AUTO-RESTOCK), which is why this splits on underscore only.
+        $parts = $f.BaseName -split '_'
+        if ($parts.Count -lt 4) { continue }
+        $tag = $parts[2]
+        if ($tag -eq $Seat -or $tag -eq 'ALL') { $claimable += $f.Name }
+    }
+}
+if ($claimable.Count -eq 0) {
+    Write-LocalLog "SKIP-EMPTY: nothing tagged $Seat or ALL in the INBOX; no engine started, nothing written to Drive"
+    Exit-Wake 0
+}
+Write-LocalLog "CLAIMABLE: $($claimable.Count) file(s) tagged $Seat or ALL - starting the engine: $($claimable -join ', ')"
+
+# NOTE, and it is a real hazard rather than a hypothetical: an ALL-tagged
+# STANDING RULE that is never prefixed and never moves will match here on
+# every wake forever, and this seat will never skip. Today none is live -
+# every ALL file in the INBOX carries a DONE- prefix - but if a standing rule
+# is ever left unprefixed, this saving silently disappears for all nine seats.
+
 # --- DRIVE STAGING ---------------------------------------------------------
 # Proven on 2026-08-24 by three controlled runs against codex-cli 0.149.1:
 #   --add-dir "G:\My Drive\AGENT-REPORTS"  -> sandbox helper never starts
@@ -389,6 +441,7 @@ if (Test-Path $TranscriptFile) { Remove-Item $TranscriptFile -Force -ErrorAction
 # the wrapper before it can log anything - exit 1, no log line, no artifact,
 # nothing to read. Codex prints its version banner to stderr on every run, so
 # this fires every time. Relaxed for the engine call only, restored after.
+$script:EngineStarted = $true
 $enginePreference = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 if ($Engine -eq "codex") {
