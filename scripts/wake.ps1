@@ -270,6 +270,28 @@ if ($claimable.Count -eq 0) {
 }
 Write-LocalLog "CLAIMABLE: $($claimable.Count) file(s) tagged $Seat or ALL - starting the engine: $($claimable -join ', ')"
 
+# --- ONE ACTIVE PER SEAT IS ONLY AS STRONG AS THE FOLDER THE CHECKER READS --
+# 2026-09-03: a headless wake checked its STAGED snapshot for existing claims,
+# missed one written to the live folder three minutes earlier, claimed the
+# same assignment and moved it to DONE under a session still working on it.
+# So the claim check reads the LIVE folder, here, before any engine exists.
+# If the live folder cannot be read, this wake does not take work: yielding
+# costs one idle cycle, claiming on stale evidence costs two writers.
+if (-not (Get-Command py -ErrorAction SilentlyContinue)) {
+    Write-LocalLog "CLAIM-UNVERIFIABLE: py launcher not on PATH, so live claims cannot be read; not claiming"
+    Exit-Wake 0
+}
+$null = & py -3.11 -m projectos.infrastructure.claim_gate $ReportsDir $Seat 2>$null | Tee-Object -Variable gateOut
+$gateExit = $LASTEXITCODE
+$gateReason = ($gateOut | Select-Object -Last 1)
+switch ($gateExit) {
+    0 { Write-LocalLog "CLAIM-GATE: $gateReason" }
+    3 { Write-LocalLog "CLAIM-DECLINE: $gateReason"; Exit-Wake 0 }
+    4 { Write-LocalLog "CLAIM-UNVERIFIABLE: $gateReason"; Exit-Wake 0 }
+    5 { Write-LocalLog "SKIP-EMPTY: $gateReason"; Exit-Wake 0 }
+    default { Write-LocalLog "CLAIM-UNVERIFIABLE: gate exited $gateExit; not claiming"; Exit-Wake 0 }
+}
+
 # NOTE, and it is a real hazard rather than a hypothetical: an ALL-tagged
 # STANDING RULE that is never prefixed and never moves will match here on
 # every wake forever, and this seat will never skip. Today none is live -
@@ -343,7 +365,37 @@ function Publish-Stage {
     # Copy first: a move applied before its report landed would leave an
     # assignment marked done with nothing to show for it.
     $published = @()
-    foreach ($f in @(Get-ChildItem $StageOut -File -ErrorAction SilentlyContinue)) {
+    $outFiles = @(Get-ChildItem $StageOut -File -ErrorAction SilentlyContinue)
+
+    # The MOMENT OF CLAIMING is when a claim lands on Drive, and that is the
+    # second place the live folder is read. The engine ran against a staged
+    # snapshot; between stage-in and now another session may have claimed the
+    # same assignment on the live folder. If so, nothing from this wake is
+    # published - not the claim, not the report, no DONE move - because every
+    # one of them would be a duplicate on the record. The staged OUT is left
+    # on disk untouched, so nothing is destroyed, only not published.
+    foreach ($c in @($outFiles | Where-Object { $_.Name -match '_CLAIM_' })) {
+        if (-not (Get-Command py -ErrorAction SilentlyContinue)) {
+            Write-LocalLog "CLAIM-UNVERIFIABLE at publish: py launcher not on PATH - publishing NOTHING from this wake; staged OUT left at $StageOut"
+            Write-UsageLine
+            Exit-Wake 0
+        }
+        $null = & py -3.11 -m projectos.infrastructure.claim_gate $ReportsDir $Seat --own $c.Name 2>$null | Tee-Object -Variable recheck
+        $recheckExit = $LASTEXITCODE
+        $why = ($recheck | Select-Object -Last 1)
+        if ($recheckExit -eq 3) {
+            Write-LocalLog "CLAIM-COLLISION at publish: $why - publishing NOTHING from this wake; staged OUT left at $StageOut"
+            Write-UsageLine
+            Exit-Wake 0
+        }
+        if ($recheckExit -ne 0) {
+            Write-LocalLog "CLAIM-UNVERIFIABLE at publish: $why - publishing NOTHING from this wake; staged OUT left at $StageOut"
+            Write-UsageLine
+            Exit-Wake 0
+        }
+    }
+
+    foreach ($f in $outFiles) {
         Copy-Item $f.FullName -Destination (Join-Path $ReportsDir $f.Name) -Force -ErrorAction SilentlyContinue
         $published += $f.Name
     }

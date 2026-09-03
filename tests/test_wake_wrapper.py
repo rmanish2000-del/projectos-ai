@@ -94,7 +94,13 @@ def _path_without_engines() -> dict[str, str]:
     looks like from the wrapper's side.
     """
     env = dict(os.environ)
-    env["PATH"] = str(Path(os.environ.get("SYSTEMROOT", "C:/Windows")) / "System32")
+    root = Path(os.environ.get("SYSTEMROOT", "C:/Windows"))
+    # System32 alone hides the engines (they live under the user profile) but
+    # also hid the `py` launcher, which is in C:\Windows itself. The wrapper's
+    # live claim gate is Python, so stripping `py` made every wake yield with
+    # CLAIM-UNVERIFIABLE and twelve tests asserted against that instead of the
+    # path they were written for. Keep the launcher, lose the engines.
+    env["PATH"] = os.pathsep.join([str(root / "System32"), str(root)])
     env["USERPROFILE"] = os.environ.get("USERPROFILE", "")
     return env
 
@@ -286,7 +292,7 @@ def test_a_seat_is_never_pointed_at_another_seats_out(
     seat = _fresh_seat(tmp_path) + suffix
     text = _staged_prompt_for(tmp_path, seat)
     header = text.split("---", 1)[0]
-    assert "stage\PROJECTOS\OUT" not in header
+    assert "stage\\PROJECTOS\\OUT" not in header
     assert f"stage\\{seat}\\OUT" in header
 
 
@@ -384,3 +390,63 @@ def test_a_consumed_file_does_not_wake_a_seat(prefix: str, tmp_path: Path) -> No
     _inbox(tmp_path, f"{prefix}2026-09-01_1429_{seat}_ALREADY-DONE.md")
     result = _run_wake(tmp_path, "-Engine", "grok", env=_path_without_engines())
     assert result.returncode == 0  # skipped, not started
+
+
+# --- one active per seat, checked against the LIVE folder (end-to-end) ------
+
+
+def test_a_second_session_declines_when_a_live_claim_exists(tmp_path: Path) -> None:
+    # END-TO-END, and the 2026-09-03 defect: a claim is on the live folder;
+    # this wake must yield before any engine exists, and write nothing.
+    (tmp_path / "wake-prompt.md").write_text("do nothing", encoding="utf-8")
+    seat = _fresh_seat(tmp_path)
+    _inbox(tmp_path, f"2026-09-03_1420_{seat}_SOME-WORK.md")
+    reports = tmp_path / "reports"
+    (reports / f"2026-09-03_1500_{seat}_CLAIM_SOME-WORK.md").write_text(
+        "claimed", encoding="utf-8"
+    )
+    before = sorted(p.name for p in reports.iterdir())
+    result = _run_wake(tmp_path, "-Engine", "grok", env=_path_without_engines())
+    assert result.returncode == 0, "declining is a clean exit, not a failure"
+    log = (Path.home() / ".projectos" / f"wake-{seat}.log").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    assert "CLAIM-DECLINE" in log
+    assert "1500_" in log  # names WHO holds it
+    assert sorted(p.name for p in reports.iterdir()) == before  # wrote nothing
+
+
+def test_no_live_claim_lets_the_wake_proceed_to_the_engine(tmp_path: Path) -> None:
+    # END-TO-END. Proceeds past the gate and dies at engine availability -
+    # the gate let it through without spending a session to prove it.
+    (tmp_path / "wake-prompt.md").write_text("do nothing", encoding="utf-8")
+    seat = _fresh_seat(tmp_path)
+    _inbox(tmp_path, f"2026-09-03_1420_{seat}_SOME-WORK.md")
+    result = _run_wake(tmp_path, "-Engine", "grok", env=_path_without_engines())
+    assert result.returncode == 2
+    log = (Path.home() / ".projectos" / f"wake-{seat}.log").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    assert "CLAIM-GATE: PROCEED" in log
+
+
+def test_a_claim_on_a_different_assignment_does_not_block(tmp_path: Path) -> None:
+    (tmp_path / "wake-prompt.md").write_text("do nothing", encoding="utf-8")
+    seat = _fresh_seat(tmp_path)
+    _inbox(tmp_path, f"2026-09-03_1420_{seat}_SOME-WORK.md")
+    (tmp_path / "reports" / f"2026-09-03_1500_{seat}_CLAIM_OTHER-WORK.md").write_text(
+        "x", encoding="utf-8"
+    )
+    result = _run_wake(tmp_path, "-Engine", "grok", env=_path_without_engines())
+    assert result.returncode == 2  # proceeded
+
+
+def test_the_publish_recheck_is_wired_and_publishes_nothing_on_collision() -> None:
+    # STRUCTURAL. The moment of claiming is when the claim lands on Drive, so
+    # the live folder is read a second time there, and a collision suppresses
+    # the whole wake's output rather than half of it.
+    source = WAKE.read_text(encoding="utf-8-sig")
+    assert "claim_gate $ReportsDir $Seat --own" in source
+    assert "CLAIM-COLLISION at publish" in source
+    assert "publishing NOTHING from this wake" in source
+    assert source.index("CLAIM-COLLISION at publish") < source.index("$published += $f.Name")
