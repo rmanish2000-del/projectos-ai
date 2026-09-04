@@ -59,6 +59,21 @@ Writing to `OUT\` is how you write to Drive. A report you do not put in `OUT\`
 does not exist, and the wrapper will fail the wake for producing no evidence
 of work.
 
+## NEVER RENAME AN UNSTAMPED FILE - the trap, 2026-09-05
+
+A freshly written assignment is unsigned for the first moments of its
+life; the signer stamps it within a minute. Four times in one day a seat
+woke inside that window, refused the file (correctly), and renamed it
+`REFUSED-UNSTAMPED-...`. The signer never stamps a prefixed name, and no
+seat claims one, so the file was dead until a human renamed it by hand.
+
+The wrapper now holds every unsigned file back for three signer
+intervals before you can see it, so a young unsigned file will not reach
+you. If an unsigned file DOES reach you it is old, and you refuse it as
+before - **but you write the refusal REPORT and leave the filename
+alone.** The report is the artefact. Renaming the source is what creates
+a state nothing in the fleet can leave. The signer now also recovers
+trapped files, but do not rely on that: do not create the trap.
 ## The loop — one pass, one assignment, then exit
 
 1. READ the INBOX: list `G:\My Drive\AGENT-REPORTS\INBOX` fresh — the

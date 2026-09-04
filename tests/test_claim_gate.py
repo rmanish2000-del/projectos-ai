@@ -8,22 +8,35 @@ same assignment, and moved it to DONE under a session still working on it.
 
 from __future__ import annotations
 
+import os
+import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from projectos.infrastructure.claim_gate import (
+    AUTH_PREFIX,
+    DEFAULT_GRACE_SECONDS,
     EXIT_DECLINE,
     EXIT_NOTHING,
     EXIT_PROCEED,
     EXIT_UNAVAILABLE,
+    EXIT_WAIT,
     Verdict,
+    age_seconds,
     assignment_key,
     decide,
+    is_stamped,
     live_claim_for,
     main,
     oldest_claimable,
 )
+
+
+def _set_age(path: Path, seconds: float) -> None:
+    then = time.time() - seconds
+    os.utime(path, (then, then))
 
 ASSIGNMENT = "2026-09-03_1420_PROJECTOS_TWO-WRITERS-IMPLEMENTATION-ONLY.md"
 
@@ -32,7 +45,13 @@ ASSIGNMENT = "2026-09-03_1420_PROJECTOS_TWO-WRITERS-IMPLEMENTATION-ONLY.md"
 def reports(tmp_path: Path) -> Path:
     directory = tmp_path / "AGENT-REPORTS"
     (directory / "INBOX").mkdir(parents=True)
-    (directory / "INBOX" / ASSIGNMENT).write_text("# assignment\n", encoding="utf-8")
+    target = directory / "INBOX" / ASSIGNMENT
+    target.write_text("# assignment" + chr(10), encoding="utf-8")
+    # Aged past the grace window on purpose. Since 2026-09-05 an unsigned file
+    # written this instant is (correctly) "young: wait for the signer"; these
+    # tests are about live claims, so their file must be old enough to be
+    # claimable at all.
+    _set_age(target, 600)
     return directory
 
 
@@ -167,3 +186,93 @@ def test_own_claims_can_be_passed_on_the_command_line(reports: Path) -> None:
     mine = "2026-09-03_1551_PROJECTOS_CLAIM_TWO-WRITERS-IMPLEMENTATION-ONLY.md"
     (reports / mine).write_text("x", encoding="utf-8")
     assert main([str(reports), "PROJECTOS", "--own", mine]) == EXIT_PROCEED
+
+
+# --- the unstamped trap: a grace window before any refusal ------------------
+
+UNSIGNED = "2026-09-05_0015_PROJECTOS_FIX-THE-UNSTAMPED-TRAP.md"
+
+
+@pytest.fixture
+def young_unsigned(tmp_path: Path) -> Path:
+    reports = tmp_path / "AGENT-REPORTS"
+    (reports / "INBOX").mkdir(parents=True)
+    target = reports / "INBOX" / UNSIGNED
+    target.write_text("# assignment, no stamp yet" + chr(10), encoding="utf-8")
+    _set_age(target, 20)
+    return reports
+
+
+def test_young_unsigned_means_wait_and_touch_nothing(young_unsigned: Path) -> None:
+    # THE fix. The signer has not had its chances yet; the seat waits.
+    target = young_unsigned / "INBOX" / UNSIGNED
+    before = (target.name, target.read_bytes(), target.stat().st_mtime)
+    decision = decide("PROJECTOS", young_unsigned, grace_seconds=180)
+    assert decision.verdict is Verdict.WAIT_FOR_STAMP
+    assert not decision.may_claim
+    assert "waiting for the signer" in decision.reason
+    assert (target.name, target.read_bytes(), target.stat().st_mtime) == before  # untouched
+
+
+def test_old_unsigned_proceeds_so_the_engine_can_refuse_it(young_unsigned: Path) -> None:
+    # By now the signer has demonstrably had several passes. The refusal
+    # behaviour is unchanged - the gate merely stops standing in its way.
+    _set_age(young_unsigned / "INBOX" / UNSIGNED, 600)
+    assert decide("PROJECTOS", young_unsigned, grace_seconds=180).verdict is Verdict.PROCEED
+
+
+def test_a_signed_file_never_waits(young_unsigned: Path) -> None:
+    target = young_unsigned / "INBOX" / UNSIGNED
+    target.write_text(
+        "# assignment" + chr(10) + AUTH_PREFIX + "k1:" + "0" * 64 + chr(10),
+        encoding="utf-8",
+    )
+    _set_age(target, 5)
+    assert decide("PROJECTOS", young_unsigned).verdict is Verdict.PROCEED
+
+
+def test_the_window_is_the_callers_not_a_hardcoded_guess(young_unsigned: Path) -> None:
+    # 20s old: inside a 60s window, outside a 10s one.
+    assert decide("PROJECTOS", young_unsigned, grace_seconds=60).verdict is Verdict.WAIT_FOR_STAMP
+    assert decide("PROJECTOS", young_unsigned, grace_seconds=10).verdict is Verdict.PROCEED
+    assert DEFAULT_GRACE_SECONDS == 180  # three signer intervals at today's PT1M
+
+
+def test_clock_skew_reads_as_young_which_is_the_safe_direction(young_unsigned: Path) -> None:
+    # 2026-09-04: Chat's clock ran 58 minutes ahead of the file's mtime. A
+    # file that appears to come from the future must wait, not be refused.
+    target = young_unsigned / "INBOX" / UNSIGNED
+    future = datetime.now(UTC) - timedelta(minutes=58)  # "now" behind the write
+    assert age_seconds(target, now=future) < 0
+    assert decide("PROJECTOS", young_unsigned, now=future).verdict is Verdict.WAIT_FOR_STAMP
+
+
+def test_age_comes_from_mtime_not_the_name(young_unsigned: Path) -> None:
+    # The name says 00:15 on 09-05; the mtime is what the seat's machine saw.
+    target = young_unsigned / "INBOX" / UNSIGNED
+    _set_age(target, 3600)
+    assert age_seconds(target) > 3000
+
+
+def test_is_stamped_looks_only_for_the_stamp_line(tmp_path: Path) -> None:
+    f = tmp_path / "x.md"
+    f.write_text("body" + chr(10), encoding="utf-8")
+    assert not is_stamped(f)
+    f.write_text("body" + chr(10) + AUTH_PREFIX + "k1:abc" + chr(10), encoding="utf-8")
+    assert is_stamped(f)
+    assert not is_stamped(tmp_path / "absent.md")
+
+
+def test_the_wait_verdict_comes_before_the_live_claim_check(young_unsigned: Path) -> None:
+    # A young unsigned file at the head of the queue means WAIT even when a
+    # claim on it exists - the claim check only matters once it is claimable.
+    (young_unsigned / "2026-09-04_2320_PROJECTOS_CLAIM_FIX-THE-UNSTAMPED-TRAP.md").write_text(
+        "x", encoding="utf-8"
+    )
+    assert decide("PROJECTOS", young_unsigned).verdict is Verdict.WAIT_FOR_STAMP
+
+
+def test_grace_is_a_cli_flag_with_its_own_exit_code(young_unsigned: Path) -> None:
+    assert main([str(young_unsigned), "PROJECTOS", "--grace", "180"]) == EXIT_WAIT
+    assert main([str(young_unsigned), "PROJECTOS", "--grace", "5"]) == EXIT_PROCEED
+    assert main([str(young_unsigned), "PROJECTOS", "--grace", "nope"]) == EXIT_UNAVAILABLE

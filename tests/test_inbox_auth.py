@@ -541,3 +541,89 @@ class TestCli:
 
     def test_bad_usage_exits_2(self) -> None:
         assert main(["frobnicate"]) == 2
+
+
+class TestTrapRecovery:
+    """THE UNSTAMPED TRAP (2026-09-05). A seat refused an unstamped file and
+    renamed it REFUSED-UNSTAMPED-...; the signer skips prefixed names, so the
+    file could never be stamped and no seat would ever claim it. A state only
+    a human could leave. The signer now recovers it."""
+
+    TRAPPED = "REFUSED-UNSTAMPED-2026-09-04_1130_TRADEOS_GET-A-LIVE-CHAIN.md"
+    ORIGINAL = "2026-09-04_1130_TRADEOS_GET-A-LIVE-CHAIN.md"
+
+    def _sweep(self, inbox: Path, tmp_path: Path) -> AutoSignResult:
+        from projectos.infrastructure.inbox_auth import auto_sign_once
+
+        return auto_sign_once(
+            inbox,
+            KEY,
+            require_lease=False,
+            brake_path=tmp_path / "no-brake",
+            log_path=tmp_path / "auto-sign.log",
+            stamp="2026-09-04 23:30",
+        )
+
+    def test_a_trapped_unstamped_file_is_restored_and_stamped(self, tmp_path: Path) -> None:
+        inbox = tmp_path / "INBOX"
+        inbox.mkdir()
+        (inbox / self.TRAPPED).write_text("# never stamped" + chr(10), encoding="utf-8")
+        result = self._sweep(inbox, tmp_path)
+        assert not (inbox / self.TRAPPED).exists()
+        assert (inbox / self.ORIGINAL).exists()
+        assert verify_text((inbox / self.ORIGINAL).read_text(encoding="utf-8"), KEY).authentic
+        assert result.recovered == (f"{self.TRAPPED} -> {self.ORIGINAL}",)
+        assert self.ORIGINAL in result.signed
+        assert "RECOVERED from the unstamped trap" in (tmp_path / "auto-sign.log").read_text(
+            encoding="utf-8"
+        )
+
+    def test_a_refused_file_that_has_a_stamp_is_not_recovered(self, tmp_path: Path) -> None:
+        # Refused for a real reason (a stamp is present, good or bad): an
+        # incident, not the accident. Recovery must never launder it.
+        inbox = tmp_path / "INBOX"
+        inbox.mkdir()
+        (inbox / self.TRAPPED).write_text(
+            "# body" + chr(10) + AUTH_PREFIX + "k1:" + "f" * 64 + chr(10), encoding="utf-8"
+        )
+        result = self._sweep(inbox, tmp_path)
+        assert (inbox / self.TRAPPED).exists()
+        assert not (inbox / self.ORIGINAL).exists()
+        assert result.recovered == ()
+
+    @pytest.mark.parametrize("prefix", ["PARKED-TRADEOS-FOCUS-", "DONE-", "SUPERSEDED-", "RPT-"])
+    def test_deliberate_prefixes_are_never_touched(self, prefix: str, tmp_path: Path) -> None:
+        inbox = tmp_path / "INBOX"
+        inbox.mkdir()
+        name = prefix + self.ORIGINAL
+        (inbox / name).write_text("# unstamped but parked on purpose" + chr(10), encoding="utf-8")
+        result = self._sweep(inbox, tmp_path)
+        assert (inbox / name).exists()
+        assert result.recovered == ()
+        assert result.signed == ()
+
+    def test_recovery_yields_when_the_original_name_already_exists(self, tmp_path: Path) -> None:
+        # Never overwrite. If both exist a human decides which is real.
+        inbox = tmp_path / "INBOX"
+        inbox.mkdir()
+        (inbox / self.TRAPPED).write_text("# trapped copy" + chr(10), encoding="utf-8")
+        (inbox / self.ORIGINAL).write_text("# a live copy" + chr(10), encoding="utf-8")
+        result = self._sweep(inbox, tmp_path)
+        assert (inbox / self.TRAPPED).exists()
+        assert (inbox / self.ORIGINAL).read_text(encoding="utf-8").startswith("# a live copy")
+        assert result.recovered == ()
+        assert any("original name already present" in s for s in result.skipped_name)
+
+    def test_a_signed_file_is_claimed_as_normal_meaning_untouched_by_the_signer(
+        self, tmp_path: Path
+    ) -> None:
+        inbox = tmp_path / "INBOX"
+        inbox.mkdir()
+        from projectos.infrastructure.inbox_auth import sign_text
+
+        (inbox / self.ORIGINAL).write_text(sign_text("# ready" + chr(10), KEY), encoding="utf-8")
+        before = (inbox / self.ORIGINAL).read_bytes()
+        result = self._sweep(inbox, tmp_path)
+        assert (inbox / self.ORIGINAL).read_bytes() == before
+        assert result.signed == ()
+        assert result.recovered == ()

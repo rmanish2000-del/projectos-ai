@@ -20,6 +20,7 @@ import hashlib
 import os
 import shutil
 import subprocess
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -31,6 +32,11 @@ WAKE = REPO_ROOT / "scripts" / "wake.ps1"
 pytestmark = pytest.mark.skipif(
     shutil.which("powershell") is None, reason="PowerShell not available"
 )
+
+
+def _age(path: Path, seconds: float) -> None:
+    then = time.time() - seconds
+    os.utime(path, (then, then))
 
 
 def _fresh_seat(tmp_path: Path) -> str:
@@ -66,9 +72,12 @@ def _run_wake(
     inbox = reports / "INBOX"
     if not inbox.exists():
         inbox.mkdir(parents=True)
-        (inbox / f"2026-09-01_0900_{seat}_SEEDED-SO-THE-WAKE-PROCEEDS.md").write_text(
-            "# assignment" + chr(10) + "body" + chr(10), encoding="utf-8"
-        )
+        seeded = inbox / f"2026-09-01_0900_{seat}_SEEDED-SO-THE-WAKE-PROCEEDS.md"
+        seeded.write_text("# assignment" + chr(10) + "body" + chr(10), encoding="utf-8")
+        # Since 2026-09-05 an unsigned file written this instant is "young:
+        # wait for the signer" and the wake exits 0 before any engine. These
+        # tests assume the wake proceeds, so the seed is aged past the window.
+        _age(seeded, 600)
     return subprocess.run(
         [
             "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
@@ -336,7 +345,8 @@ def _inbox(tmp_path: Path, *names: str) -> None:
     box = tmp_path / "reports" / "INBOX"
     box.mkdir(parents=True, exist_ok=True)
     for name in names:
-        (box / name).write_text("# assignment\nbody\n", encoding="utf-8")
+        (box / name).write_text("# assignment" + chr(10) + "body" + chr(10), encoding="utf-8")
+        _age(box / name, 600)  # old enough to be claimable; grace tests re-age
 
 
 def test_nothing_tagged_for_this_seat_starts_no_engine(tmp_path: Path) -> None:
@@ -450,3 +460,73 @@ def test_the_publish_recheck_is_wired_and_publishes_nothing_on_collision() -> No
     assert "CLAIM-COLLISION at publish" in source
     assert "publishing NOTHING from this wake" in source
     assert source.index("CLAIM-COLLISION at publish") < source.index("$published += $f.Name")
+
+
+# --- the unstamped trap: grace window before any engine (end-to-end) --------
+
+
+def test_a_young_unsigned_file_makes_the_wake_wait_and_touch_nothing(tmp_path: Path) -> None:
+    # END-TO-END, and the 2026-09-05 trap: an unsigned file seconds old must
+    # not be refused, renamed, or even shown to an engine. Nothing is written.
+    (tmp_path / "wake-prompt.md").write_text("do nothing", encoding="utf-8")
+    seat = _fresh_seat(tmp_path)
+    _inbox(tmp_path, f"2026-09-05_0015_{seat}_FRESH-AND-UNSIGNED.md")
+    target = tmp_path / "reports" / "INBOX" / f"2026-09-05_0015_{seat}_FRESH-AND-UNSIGNED.md"
+    _age(target, 10)
+    reports = tmp_path / "reports"
+    before_tree = sorted(p.name for p in reports.rglob("*"))
+    before_file = (target.read_bytes(), target.stat().st_mtime)
+
+    result = _run_wake(tmp_path, "-Engine", "grok", env=_path_without_engines())
+
+    assert result.returncode == 0, "waiting is a clean exit, not a failure"
+    log = (Path.home() / ".projectos" / f"wake-{seat}.log").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    assert "WAIT-FOR-STAMP" in log
+    assert "grace 180s" in log  # derived from the real AUTO-SIGN task: PT1M x 3
+    assert sorted(p.name for p in reports.rglob("*")) == before_tree  # no rename, no artefact
+    assert (target.read_bytes(), target.stat().st_mtime) == before_file  # untouched
+
+
+def test_an_old_unsigned_file_reaches_the_engine_to_be_refused(tmp_path: Path) -> None:
+    # END-TO-END. The signer has had its chances; refusal behaviour is
+    # unchanged, and the wake proceeds past the gate to the engine check.
+    (tmp_path / "wake-prompt.md").write_text("do nothing", encoding="utf-8")
+    seat = _fresh_seat(tmp_path)
+    _inbox(tmp_path, f"2026-09-05_0015_{seat}_OLD-AND-UNSIGNED.md")
+    _age(tmp_path / "reports" / "INBOX" / f"2026-09-05_0015_{seat}_OLD-AND-UNSIGNED.md", 900)
+    result = _run_wake(tmp_path, "-Engine", "grok", env=_path_without_engines())
+    assert result.returncode == 2  # proceeded, died at engine availability
+    log = (Path.home() / ".projectos" / f"wake-{seat}.log").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    assert "WAIT-FOR-STAMP" not in log
+    assert "CLAIM-GATE: PROCEED" in log
+
+
+def test_a_signed_file_is_claimed_as_normal_even_when_fresh(tmp_path: Path) -> None:
+    # END-TO-END. Age is irrelevant once the stamp is present.
+    (tmp_path / "wake-prompt.md").write_text("do nothing", encoding="utf-8")
+    seat = _fresh_seat(tmp_path)
+    box = tmp_path / "reports" / "INBOX"
+    box.mkdir(parents=True, exist_ok=True)
+    (box / f"2026-09-05_0015_{seat}_FRESH-AND-SIGNED.md").write_text(
+        "# assignment" + chr(10) + "AUTH: HMAC-SHA256 k1:" + "0" * 64 + chr(10), encoding="utf-8"
+    )
+    result = _run_wake(tmp_path, "-Engine", "grok", env=_path_without_engines())
+    assert result.returncode == 2  # proceeded past the gate
+    log = (Path.home() / ".projectos" / f"wake-{seat}.log").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    assert "CLAIM-GATE: PROCEED" in log
+
+
+def test_the_grace_window_is_derived_not_hardcoded() -> None:
+    # STRUCTURAL. The window must come from the AUTO-SIGN task's own interval
+    # so it stays right if that interval ever changes.
+    source = WAKE.read_text(encoding="utf-8-sig")
+    assert 'Get-ScheduledTask -TaskPath "\FLEET\\" -TaskName "AUTO-SIGN"' in source
+    assert "XmlConvert]::ToTimeSpan" in source
+    assert "3 * $interval.TotalSeconds" in source
+    assert "--grace $graceSeconds" in source

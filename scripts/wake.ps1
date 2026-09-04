@@ -281,7 +281,23 @@ if (-not (Get-Command py -ErrorAction SilentlyContinue)) {
     Write-LocalLog "CLAIM-UNVERIFIABLE: py launcher not on PATH, so live claims cannot be read; not claiming"
     Exit-Wake 0
 }
-$null = & py -3.11 -m projectos.infrastructure.claim_gate $ReportsDir $Seat 2>$null | Tee-Object -Variable gateOut
+# THE UNSTAMPED TRAP (2026-09-05): a freshly written assignment is unsigned
+# for the first moments of its life. A seat waking inside that window refused
+# it and renamed it, and the signer never stamps a prefixed name - dead on
+# disk until a human renamed it back, four times in one day. So an unsigned
+# file gets a grace window of THREE signer intervals before any engine may
+# see it, and the window is read from the AUTO-SIGN task itself rather than
+# guessed, so it stays right if that interval ever changes.
+$graceSeconds = 180
+try {
+    $signer = Get-ScheduledTask -TaskPath "\FLEET\" -TaskName "AUTO-SIGN" -ErrorAction Stop
+    $interval = [System.Xml.XmlConvert]::ToTimeSpan($signer.Triggers[0].Repetition.Interval)
+    if ($interval.TotalSeconds -gt 0) { $graceSeconds = [int](3 * $interval.TotalSeconds) }
+}
+catch {
+    Write-LocalLog "GRACE: could not read the AUTO-SIGN interval ($($_.Exception.Message)); using the 180s fallback"
+}
+$null = & py -3.11 -m projectos.infrastructure.claim_gate $ReportsDir $Seat --grace $graceSeconds 2>$null | Tee-Object -Variable gateOut
 $gateExit = $LASTEXITCODE
 $gateReason = ($gateOut | Select-Object -Last 1)
 switch ($gateExit) {
@@ -289,6 +305,7 @@ switch ($gateExit) {
     3 { Write-LocalLog "CLAIM-DECLINE: $gateReason"; Exit-Wake 0 }
     4 { Write-LocalLog "CLAIM-UNVERIFIABLE: $gateReason"; Exit-Wake 0 }
     5 { Write-LocalLog "SKIP-EMPTY: $gateReason"; Exit-Wake 0 }
+    6 { Write-LocalLog "WAIT-FOR-STAMP: $gateReason"; Exit-Wake 0 }
     default { Write-LocalLog "CLAIM-UNVERIFIABLE: gate exited $gateExit; not claiming"; Exit-Wake 0 }
 }
 

@@ -463,6 +463,18 @@ def batch_sign(
 #: a draft, a synced conflict copy: none of them get fleet authority.
 ASSIGNMENT_NAME = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{4}_[A-Z][A-Z0-9-]*_.+\.md$")
 
+#: THE UNSTAMPED TRAP (2026-09-05). A seat that refused a file for having no
+#: stamp renamed it `REFUSED-UNSTAMPED-...`; every prefixed name fails
+#: ASSIGNMENT_NAME, so the signer skipped it forever, and the seat skipped it
+#: too. A correct refusal produced a state nothing in the fleet could leave.
+#: This matches a refusal-style prefix in front of an otherwise well-formed
+#: assignment name. It is deliberately NOT matched against DONE-, PARKED-,
+#: SUPERSEDED- or RPT-, which are decisions, not accidents.
+TRAPPED_NAME = re.compile(
+    r"^(?P<prefix>(?:REFUSED|UNSTAMPED)(?:-[A-Z0-9]+)*-)"
+    r"(?P<original>\d{4}-\d{2}-\d{2}_\d{4}_[A-Z][A-Z0-9-]*_.+\.md)$"
+)
+
 #: Per-sweep ceiling. The largest legitimate burst observed is a handful of
 #: assignments issued together, so 5 covers real work; beyond it a runaway
 #: writer is THROTTLED and, more importantly, ANNOUNCED — the cap-hit is
@@ -489,6 +501,7 @@ class AutoSignResult:
     skipped_name: tuple[str, ...] = ()  # not assignment-shaped
     deferred: tuple[str, ...] = ()  # over the per-sweep cap
     refused: tuple[str, ...] = ()  # guard or lease refusals: incidents, not noise
+    recovered: tuple[str, ...] = ()  # un-trapped: prefix stripped, then stamped
 
     def summary(self) -> str:
         parts = [f"signed={len(self.signed)}"]
@@ -544,7 +557,27 @@ def auto_sign_once(
     candidates: list[Path] = []
     suspect: list[str] = []
     skipped: list[str] = []
+    recovered: list[str] = []
     for path in sorted(inbox_dir.glob("*.md")):
+        # RECOVERY FIRST. A file wearing a refusal prefix that carries NO stamp
+        # at all was refused only for being unstamped - the trap. Strip the
+        # prefix so it becomes a normal candidate and gets stamped this sweep.
+        # A prefixed file that HAS a stamp (good or bad) was refused for a real
+        # reason and is left exactly as it is: recovery is for the accident,
+        # never for an incident.
+        trapped = TRAPPED_NAME.match(path.name)
+        if trapped is not None:
+            body = path.read_text(encoding="utf-8")
+            if AUTH_PREFIX in body:
+                skipped.append(path.name)
+                continue
+            restored = path.with_name(trapped.group("original"))
+            if restored.exists():
+                skipped.append(f"{path.name} (original name already present; left alone)")
+                continue
+            path.rename(restored)
+            recovered.append(f"{path.name} -> {restored.name}")
+            path = restored
         if not ASSIGNMENT_NAME.match(path.name):
             skipped.append(path.name)
             continue
@@ -621,6 +654,7 @@ def auto_sign_once(
         skipped_name=tuple(skipped),
         deferred=tuple(deferred),
         refused=tuple(refused),
+        recovered=tuple(recovered),
     )
     if drive_dir is not None and incidents:
         record_incidents(drive_dir, incidents)
@@ -633,7 +667,8 @@ def _write_auto_sign_trail(
 ) -> None:
     """The audit trail: append-only locally and on Drive, plus a liveness
     marker. A stopped watcher shows as a stale marker rather than silence."""
-    lines = [f"{stamp} auto-signed: {name}" for name in result.signed]
+    lines = [f"{stamp} RECOVERED from the unstamped trap: {item}" for item in result.recovered]
+    lines += [f"{stamp} auto-signed: {name}" for name in result.signed]
     lines += [f"{stamp} TAMPERED STAMP, LEFT REFUSED: {item}" for item in result.suspect]
     if result.deferred:
         lines.append(
@@ -736,6 +771,8 @@ def main(argv: list[str] | None = None) -> int:
             print("auto-sign: BRAKE FILE PRESENT - did nothing")
             return 0
         print(f"auto-sign: {result.summary()}")
+        for item in result.recovered:
+            print(f"  RECOVERED: {item}")
         for name in result.signed:
             print(f"  signed: {name}")
         for item in result.suspect:
