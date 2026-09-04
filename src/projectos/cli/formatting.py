@@ -37,6 +37,7 @@ def assignment_summary(assignment: Assignment, *, indent: str = "  ") -> str:
     lines = [
         f"{indent}{assignment.id}  {assignment.title}",
         f"{indent}  Status    {assignment.status.value.upper()}",
+        f"{indent}  Owner     {assignment.owner}",
         f"{indent}  Work      {assignment.work_type.value} → {assignment.executor.value}",
         f"{indent}  Workflow  {assignment.workflow_mode.value}",
     ]
@@ -45,6 +46,31 @@ def assignment_summary(assignment: Assignment, *, indent: str = "  ") -> str:
     if assignment.depends_on:
         deps = ", ".join(str(d) for d in assignment.depends_on)
         lines.append(f"{indent}  Depends   {deps}")
+    if assignment.rejection_reasons:
+        lines.append(f"{indent}  Rejected because:")
+        lines += [f"{indent}    - {reason}" for reason in assignment.rejection_reasons]
+    return "\n".join(lines)
+
+
+def next_summary(
+    assignment: Assignment,
+    *,
+    source: str,
+    dependencies: str,
+    indent: str = "  ",
+) -> str:
+    """The `projectos next` block: every field the P2 CLI contract requires —
+    id, title, owner, executor, workflow mode, generation source, dependency
+    status, and current status — in one deterministic layout."""
+    lines = [
+        f"{indent}{assignment.id}  {assignment.title}",
+        f"{indent}  Status      {assignment.status.value.upper()}",
+        f"{indent}  Owner       {assignment.owner}",
+        f"{indent}  Executor    {assignment.executor.value}  ({assignment.work_type.value})",
+        f"{indent}  Workflow    {assignment.workflow_mode.value}",
+        f"{indent}  Source      {source}",
+        f"{indent}  Dependency  {dependencies}",
+    ]
     if assignment.rejection_reasons:
         lines.append(f"{indent}  Rejected because:")
         lines += [f"{indent}    - {reason}" for reason in assignment.rejection_reasons]

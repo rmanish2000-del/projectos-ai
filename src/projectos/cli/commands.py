@@ -883,10 +883,14 @@ def run_next(kernel: Kernel, *, dry_run: bool = False) -> NextRun:
     """
     lifecycle = kernel.lifecycle
 
+    def show(assignment: Assignment, *, source: str) -> None:
+        report = lifecycle.graph().evaluate(assignment)
+        print(formatting.next_summary(assignment, source=source, dependencies=report.describe()))
+
     active = lifecycle.active()
     if active is not None:
         print(formatting.heading("ALREADY ACTIVE"))
-        print(formatting.assignment_summary(active))
+        show(active, source="existing (active)")
         print()
         print("  INV-1 permits one active assignment. Finish, block, or cancel it first.")
         return NextRun(int(ExitCode.OK), None)
@@ -900,11 +904,11 @@ def run_next(kernel: Kernel, *, dry_run: bool = False) -> NextRun:
 
     assert result.assignment is not None
     candidate = result.assignment
+    source = result.decision.source
 
     if dry_run:
         print(formatting.heading("NEXT (dry run)"))
-        print(formatting.assignment_summary(candidate))
-        print(f"    Source    {result.decision.source}")
+        show(candidate, source=source)
         return NextRun(int(ExitCode.OK), candidate)
 
     if candidate.status is Status.REJECTED:
@@ -912,14 +916,14 @@ def run_next(kernel: Kernel, *, dry_run: bool = False) -> NextRun:
         # rejection reasons into the fresh briefing (spec 7.2, REJECTED -> ACTIVE).
         resumed, briefing = lifecycle.resume(candidate.id)
         print(formatting.heading("RESUMED AFTER REJECTION"))
-        print(formatting.assignment_summary(resumed))
+        show(resumed, source=source)
         print()
         print(formatting.briefing_block(briefing.render()))
         return NextRun(int(ExitCode.OK), resumed)
 
     if candidate.status is not Status.READY:
         print(formatting.heading("NEXT ASSIGNMENT NOT YET READY"))
-        print(formatting.assignment_summary(candidate))
+        show(candidate, source=source)
         if candidate.status is Status.DRAFT:
             print()
             print("  Classification is deferred; see `projectos history` for the reason.")
@@ -927,8 +931,7 @@ def run_next(kernel: Kernel, *, dry_run: bool = False) -> NextRun:
 
     started, briefing = lifecycle.start(candidate.id)
     print(formatting.heading("STARTED"))
-    print(formatting.assignment_summary(started))
-    print(f"    Source    {result.decision.source}")
+    show(started, source=source)
     print()
     print(formatting.briefing_block(briefing.render()))
     return NextRun(int(ExitCode.OK), started)
